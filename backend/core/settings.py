@@ -21,6 +21,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'tenants',
+    'users',
 ]
 
 MIDDLEWARE = [
@@ -89,3 +91,5 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
 }
+# Custom User Model
+AUTH_USER_MODEL = 'users.CustomUser'
