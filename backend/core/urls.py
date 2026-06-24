@@ -10,4 +10,7 @@ urlpatterns = [
 
     # Inventory APIs
     path('api/inventory/', include('inventory.urls')),
+
+    # Billing APIs
+    path('api/billing/', include('billing.urls')),
 ]

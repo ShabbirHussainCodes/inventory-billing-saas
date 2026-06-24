@@ -1,0 +1,15 @@
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # Customers
+    path('customers/', views.customer_list, name='customer-list'),
+    path('customers/<uuid:pk>/', views.customer_detail, name='customer-detail'),
+
+    # Invoices
+    path('invoices/', views.invoice_list, name='invoice-list'),
+    path('invoices/<uuid:pk>/', views.invoice_detail, name='invoice-detail'),
+
+    # Dashboard Summary
+    path('summary/', views.invoice_summary, name='invoice-summary'),
+]
