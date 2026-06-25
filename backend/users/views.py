@@ -2,12 +2,22 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from django.contrib.auth import authenticate, login, logout
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import authenticate
 from .serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
     UserProfileSerializer
 )
+
+
+def get_tokens_for_user(user):
+    # User ke liye JWT tokens generate karo
+    refresh = RefreshToken.for_user(user)
+    return {
+        'refresh': str(refresh),
+        'access': str(refresh.access_token),
+    }
 
 
 @api_view(['POST'])
@@ -16,8 +26,10 @@ def register_view(request):
     serializer = UserRegistrationSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.save()
+        tokens = get_tokens_for_user(user)
         return Response({
             'message': 'Account created successfully.',
+            'tokens': tokens,
             'user': {
                 'email': user.email,
                 'first_name': user.first_name,
@@ -40,9 +52,10 @@ def login_view(request):
         password = serializer.validated_data['password']
         user = authenticate(request, email=email, password=password)
         if user is not None:
-            login(request, user)
+            tokens = get_tokens_for_user(user)
             return Response({
                 'message': 'Login successful.',
+                'tokens': tokens,
                 'user': {
                     'email': user.email,
                     'first_name': user.first_name,
@@ -61,10 +74,17 @@ def login_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_view(request):
-    logout(request)
-    return Response({
-        'message': 'Logged out successfully.'
-    }, status=status.HTTP_200_OK)
+    try:
+        refresh_token = request.data.get('refresh')
+        token = RefreshToken(refresh_token)
+        token.blacklist()
+        return Response({
+            'message': 'Logged out successfully.'
+        }, status=status.HTTP_200_OK)
+    except Exception:
+        return Response({
+            'message': 'Logged out successfully.'
+        }, status=status.HTTP_200_OK)
 
 
 @api_view(['GET'])
