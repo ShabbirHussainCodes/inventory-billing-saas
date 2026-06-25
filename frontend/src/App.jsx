@@ -5,6 +5,7 @@ import ProductsPage from "./pages/ProductsPage"
 import InvoicesPage from "./pages/InvoicesPage"
 import CustomersPage from "./pages/CustomersPage"
 import RegisterPage from "./pages/RegisterPage"
+import SuperAdminDashboard from "./pages/SuperAdminDashboard"
 
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem("access_token")
@@ -36,6 +37,9 @@ function App() {
           <ProtectedRoute><CustomersPage /></ProtectedRoute>
         } />
 
+        <Route path="/superadmin" element={
+          <ProtectedRoute><SuperAdminDashboard /></ProtectedRoute>
+        } />
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

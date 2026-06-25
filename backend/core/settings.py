@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     'users',
     'inventory',
     'billing',
+    'superadmin',
 ]
 
 MIDDLEWARE = [

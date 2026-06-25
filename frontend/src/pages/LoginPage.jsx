@@ -29,8 +29,12 @@ export default function LoginPage() {
       localStorage.setItem("refresh_token", tokens.refresh)
       localStorage.setItem("user", JSON.stringify(user))
 
-      // Dashboard pe jao
-      navigate("/dashboard")
+      // Role dekho aur sahi jagah bhejo
+      if (user.role === "super_admin") {
+        navigate("/superadmin")
+      } else {
+        navigate("/dashboard")
+      }
     } catch (err) {
       setError("Invalid email or password. Please try again.")
     } finally {

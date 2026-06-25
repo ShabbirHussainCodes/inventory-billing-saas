@@ -13,4 +13,7 @@ urlpatterns = [
 
     # Billing APIs
     path('api/billing/', include('billing.urls')),
+
+    # Super Admin APIs
+    path('api/superadmin/', include('superadmin.urls')),
 ]
