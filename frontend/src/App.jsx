@@ -1,7 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import LoginPage from "./pages/LoginPage"
+import DashboardPage from "./pages/DashboardPage"
+import ProductsPage from "./pages/ProductsPage"
+import InvoicesPage from "./pages/InvoicesPage"
+import CustomersPage from "./pages/CustomersPage"
 
-// Protected Route — login ke bina andar nahi ja sakte
+// Protected Route
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem("access_token")
   if (!token) {
@@ -14,27 +18,25 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public Routes */}
+        {/* Public */}
         <Route path="/" element={<LoginPage />} />
 
-        {/* Protected Routes — baad mein add karenge */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <div className="text-center">
-                  <h1 className="text-3xl font-bold text-blue-600">
-                    BillingMars
-                  </h1>
-                  <p className="text-gray-500 mt-2">
-                    Dashboard coming soon! 🚀
-                  </p>
-                </div>
-              </div>
-            </ProtectedRoute>
-          }
-        />
+        {/* Protected */}
+        <Route path="/dashboard" element={
+          <ProtectedRoute><DashboardPage /></ProtectedRoute>
+        } />
+        <Route path="/products" element={
+          <ProtectedRoute><ProductsPage /></ProtectedRoute>
+        } />
+        <Route path="/invoices" element={
+          <ProtectedRoute><InvoicesPage /></ProtectedRoute>
+        } />
+        <Route path="/customers" element={
+          <ProtectedRoute><CustomersPage /></ProtectedRoute>
+        } />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )
