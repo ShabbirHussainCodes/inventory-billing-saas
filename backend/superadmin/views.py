@@ -1,7 +1,6 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
 from tenants.models import Tenant
 from users.models import CustomUser
 
@@ -132,3 +131,84 @@ def toggle_user(request, user_id):
         })
     except CustomUser.DoesNotExist:
         return Response({'error': 'User not found.'}, status=404)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def tenant_products(request, tenant_id):
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+    except Tenant.DoesNotExist:
+        return Response({'error': 'Tenant not found.'}, status=404)
+
+    from inventory.models import Product
+    products = Product.objects.filter(tenant=tenant, is_active=True)
+    data = []
+    for p in products:
+        data.append({
+            'id': str(p.id),
+            'name': p.name,
+            'sku': p.sku,
+            'cost_price': str(p.cost_price),
+            'selling_price': str(p.selling_price),
+            'stock_quantity': p.stock_quantity,
+            'profit_margin': p.profit_margin,
+            'is_low_stock': p.is_low_stock,
+        })
+    return Response({'tenant': tenant.name, 'products': data})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def tenant_invoices(request, tenant_id):
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+    except Tenant.DoesNotExist:
+        return Response({'error': 'Tenant not found.'}, status=404)
+
+    from billing.models import Invoice
+    invoices = Invoice.objects.filter(tenant=tenant).order_by('-created_at')
+    data = []
+    for inv in invoices:
+        data.append({
+            'id': str(inv.id),
+            'invoice_number': inv.invoice_number,
+            'customer_name': inv.customer.name,
+            'total_amount': str(inv.total_amount),
+            'total_profit': str(inv.total_profit),
+            'currency': inv.currency,
+            'status': inv.status,
+            'invoice_date': str(inv.invoice_date),
+        })
+    return Response({'tenant': tenant.name, 'invoices': data})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def tenant_customers(request, tenant_id):
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+    except Tenant.DoesNotExist:
+        return Response({'error': 'Tenant not found.'}, status=404)
+
+    from billing.models import Customer
+    customers = Customer.objects.filter(tenant=tenant, is_active=True)
+    data = []
+    for c in customers:
+        data.append({
+            'id': str(c.id),
+            'name': c.name,
+            'email': c.email or '—',
+            'phone': c.phone or '—',
+            'country': c.country or '—',
+        })
+    return Response({'tenant': tenant.name, 'customers': data})
