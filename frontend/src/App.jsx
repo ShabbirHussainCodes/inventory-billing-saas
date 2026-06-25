@@ -5,6 +5,7 @@ import ProductsPage from "./pages/ProductsPage"
 import InvoicesPage from "./pages/InvoicesPage"
 import CustomersPage from "./pages/CustomersPage"
 import RegisterPage from "./pages/RegisterPage"
+import BusinessDetailPage from "./pages/BusinessDetailPage"
 import SuperAdminDashboard from "./pages/SuperAdminDashboard"
 
 function ProtectedRoute({ children }) {
@@ -40,6 +41,9 @@ function App() {
         <Route path="/superadmin" element={
           <ProtectedRoute><SuperAdminDashboard /></ProtectedRoute>
         } />
+        <Route path="/superadmin/business/:tenantId" element={
+  <ProtectedRoute><BusinessDetailPage /></ProtectedRoute>
+} />
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

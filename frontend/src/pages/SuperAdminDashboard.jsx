@@ -152,14 +152,13 @@ export default function SuperAdminDashboard() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-5 py-2 rounded-lg text-sm font-medium transition ${
-                activeTab === tab
+              className={`px-5 py-2 rounded-lg text-sm font-medium transition ${activeTab === tab
                   ? "bg-blue-600 text-white"
                   : "bg-white text-gray-600 hover:bg-gray-50 shadow"
-              }`}
+                }`}
             >
               {tab === "overview" ? "📊 Overview" :
-               tab === "tenants" ? "🏪 Businesses" : "👥 Users"}
+                tab === "tenants" ? "🏪 Businesses" : "👥 Users"}
             </button>
           ))}
         </div>
@@ -224,34 +223,37 @@ export default function SuperAdminDashboard() {
                       <td className="px-6 py-4 text-sm text-gray-600">{tenant.currency}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{tenant.users_count}</td>
                       <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          tenant.access_type === 'paid'
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${tenant.access_type === 'paid'
                             ? 'bg-green-100 text-green-600'
                             : tenant.access_type === 'admin_grant'
-                            ? 'bg-yellow-100 text-yellow-600'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
+                              ? 'bg-yellow-100 text-yellow-600'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}>
                           {tenant.access_type}
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          tenant.is_active
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${tenant.is_active
                             ? 'bg-green-100 text-green-600'
                             : 'bg-red-100 text-red-600'
-                        }`}>
+                          }`}>
                           {tenant.is_active ? 'Active ✅' : 'Inactive ❌'}
                         </span>
                       </td>
                       <td className="px-6 py-4">
+                        <button
+                          onClick={() => navigate(`/superadmin/business/${tenant.id}`)}
+                          className="px-3 py-1 rounded-lg text-xs font-medium bg-blue-100 text-blue-600 hover:bg-blue-200 transition"
+                        >
+                          View 👁️
+                        </button>
                         <div className="flex gap-2">
                           <button
                             onClick={() => handleToggleTenant(tenant.id)}
-                            className={`px-3 py-1 rounded-lg text-xs font-medium transition ${
-                              tenant.is_active
+                            className={`px-3 py-1 rounded-lg text-xs font-medium transition ${tenant.is_active
                                 ? 'bg-red-100 text-red-600 hover:bg-red-200'
                                 : 'bg-green-100 text-green-600 hover:bg-green-200'
-                            }`}
+                              }`}
                           >
                             {tenant.is_active ? 'Deactivate' : 'Activate'}
                           </button>
@@ -310,22 +312,20 @@ export default function SuperAdminDashboard() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          u.is_active
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${u.is_active
                             ? 'bg-green-100 text-green-600'
                             : 'bg-red-100 text-red-600'
-                        }`}>
+                          }`}>
                           {u.is_active ? 'Active ✅' : 'Inactive ❌'}
                         </span>
                       </td>
                       <td className="px-6 py-4">
                         <button
                           onClick={() => handleToggleUser(u.id)}
-                          className={`px-3 py-1 rounded-lg text-xs font-medium transition ${
-                            u.is_active
+                          className={`px-3 py-1 rounded-lg text-xs font-medium transition ${u.is_active
                               ? 'bg-red-100 text-red-600 hover:bg-red-200'
                               : 'bg-green-100 text-green-600 hover:bg-green-200'
-                          }`}
+                            }`}
                         >
                           {u.is_active ? 'Deactivate' : 'Activate'}
                         </button>
