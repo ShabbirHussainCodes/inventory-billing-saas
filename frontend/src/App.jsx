@@ -4,8 +4,8 @@ import DashboardPage from "./pages/DashboardPage"
 import ProductsPage from "./pages/ProductsPage"
 import InvoicesPage from "./pages/InvoicesPage"
 import CustomersPage from "./pages/CustomersPage"
+import RegisterPage from "./pages/RegisterPage"
 
-// Protected Route
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem("access_token")
   if (!token) {
@@ -20,6 +20,7 @@ function App() {
       <Routes>
         {/* Public */}
         <Route path="/" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
 
         {/* Protected */}
         <Route path="/dashboard" element={
