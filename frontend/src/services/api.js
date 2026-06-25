@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 // Django backend ka address
-const BASE_URL = 'http://127.0.0.1:8000/api'
+const BASE_URL = 'https://billingmars-api.onrender.com/api'
 
 // Axios instance banao
 const api = axios.create({
