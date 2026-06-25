@@ -123,5 +123,7 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Security
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# Static files fix
+STATICFILES_DIRS = []
 # Custom User Model
 AUTH_USER_MODEL = 'users.CustomUser'
