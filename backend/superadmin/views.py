@@ -212,3 +212,138 @@ def tenant_customers(request, tenant_id):
             'country': c.country or '—',
         })
     return Response({'tenant': tenant.name, 'customers': data})
+from django.contrib.auth.hashers import make_password
+from rest_framework import status
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_tenant_product(request, tenant_id):
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+    except Tenant.DoesNotExist:
+        return Response({'error': 'Tenant not found.'}, status=404)
+
+    from inventory.models import Product
+    data = request.data
+    product = Product.objects.create(
+        tenant=tenant,
+        name=data.get('name'),
+        sku=data.get('sku'),
+        cost_price=data.get('cost_price'),
+        selling_price=data.get('selling_price'),
+        stock_quantity=data.get('stock_quantity', 0),
+        reorder_point=data.get('reorder_point', 10),
+        tax_rate=data.get('tax_rate', 0),
+    )
+    return Response({
+        'message': 'Product added successfully.',
+        'id': str(product.id),
+        'name': product.name,
+    }, status=201)
+
+
+@api_view(['PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def manage_tenant_product(request, tenant_id, product_id):
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    from inventory.models import Product
+    try:
+        product = Product.objects.get(id=product_id, tenant__id=tenant_id)
+    except Product.DoesNotExist:
+        return Response({'error': 'Product not found.'}, status=404)
+
+    if request.method == 'DELETE':
+        product.is_active = False
+        product.save()
+        return Response({'message': 'Product deleted successfully.'})
+
+    elif request.method == 'PUT':
+        data = request.data
+        product.name = data.get('name', product.name)
+        product.sku = data.get('sku', product.sku)
+        product.cost_price = data.get('cost_price', product.cost_price)
+        product.selling_price = data.get('selling_price', product.selling_price)
+        product.stock_quantity = data.get('stock_quantity', product.stock_quantity)
+        product.tax_rate = data.get('tax_rate', product.tax_rate)
+        product.save()
+        return Response({'message': 'Product updated successfully.'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reset_user_password(request, user_id):
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    try:
+        user = CustomUser.objects.get(id=user_id)
+    except CustomUser.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=404)
+
+    new_password = request.data.get('new_password')
+    if not new_password:
+        return Response({'error': 'New password required.'}, status=400)
+
+    user.password = make_password(new_password)
+    user.save()
+    return Response({'message': f'Password reset successfully for {user.email}.'})
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def upgrade_tenant(request, tenant_id):
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+    except Tenant.DoesNotExist:
+        return Response({'error': 'Tenant not found.'}, status=404)
+
+    tenant.access_type = 'paid'
+    tenant.is_active = True
+    tenant.save()
+    return Response({'message': f'{tenant.name} upgraded to paid successfully.'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def tenant_reports(request, tenant_id):
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+    except Tenant.DoesNotExist:
+        return Response({'error': 'Tenant not found.'}, status=404)
+
+    from billing.models import Invoice
+    from inventory.models import Product
+
+    invoices = Invoice.objects.filter(tenant=tenant)
+    total_revenue = sum(inv.total_amount for inv in invoices)
+    total_profit = sum(inv.total_profit for inv in invoices)
+    total_invoices = invoices.count()
+    paid_invoices = invoices.filter(status='paid').count()
+
+    # Low stock products
+    products = Product.objects.filter(tenant=tenant, is_active=True)
+    low_stock = [p.name for p in products if p.is_low_stock]
+    total_products = products.count()
+
+    return Response({
+        'tenant': tenant.name,
+        'currency': tenant.currency,
+        'total_revenue': float(total_revenue),
+        'total_profit': float(total_profit),
+        'total_invoices': total_invoices,
+        'paid_invoices': paid_invoices,
+        'total_products': total_products,
+        'low_stock_products': low_stock,
+        'low_stock_count': len(low_stock),
+    })
