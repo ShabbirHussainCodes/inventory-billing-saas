@@ -31,7 +31,7 @@ export default function LoginPage() {
 
       // Role dekho aur sahi jagah bhejo
       if (user.role === "super_admin") {
-        navigate("/superadmin")
+        navigate("/admin")
       } else {
         navigate("/dashboard")
       }
