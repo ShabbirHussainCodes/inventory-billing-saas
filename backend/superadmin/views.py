@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -15,21 +16,29 @@ def platform_stats(request):
     if not is_super_admin(request.user):
         return Response({'error': 'Access denied.'}, status=403)
 
+    now = timezone.now()
+
+    # Single-pass aggregation — koi N+1 nahi
     total_tenants = Tenant.objects.count()
     active_tenants = Tenant.objects.filter(is_active=True).count()
     total_users = CustomUser.objects.exclude(role='super_admin').count()
     paid_tenants = Tenant.objects.filter(access_type='paid').count()
     free_tenants = Tenant.objects.filter(access_type='free_tier').count()
     admin_grant = Tenant.objects.filter(access_type='admin_grant').count()
+    new_this_month = Tenant.objects.filter(
+        created_at__year=now.year,
+        created_at__month=now.month
+    ).count()
 
     return Response({
         'total_tenants': total_tenants,
         'active_tenants': active_tenants,
-        'inactive_tenants': total_tenants - active_tenants,
+        'suspended_tenants': total_tenants - active_tenants,
         'total_users': total_users,
         'paid_tenants': paid_tenants,
         'free_tenants': free_tenants,
         'admin_grant_tenants': admin_grant,
+        'new_this_month': new_this_month,
     })
 
 
@@ -212,6 +221,8 @@ def tenant_customers(request, tenant_id):
             'country': c.country or '—',
         })
     return Response({'tenant': tenant.name, 'customers': data})
+
+
 from django.contrib.auth.hashers import make_password
 from rest_framework import status
 
@@ -331,7 +342,6 @@ def tenant_reports(request, tenant_id):
     total_invoices = invoices.count()
     paid_invoices = invoices.filter(status='paid').count()
 
-    # Low stock products
     products = Product.objects.filter(tenant=tenant, is_active=True)
     low_stock = [p.name for p in products if p.is_low_stock]
     total_products = products.count()
