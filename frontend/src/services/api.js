@@ -1,26 +1,18 @@
 import axios from 'axios'
 
-// Django backend ka address
 const BASE_URL = 'https://billingmars-api.onrender.com/api'
 
-// Axios instance banao
 const api = axios.create({
   baseURL: BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 })
 
-// Har request mein JWT token automatically add karo
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
+  if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
-// Authentication APIs
 export const authAPI = {
   login: (data) => api.post('/auth/login/', data),
   register: (data) => api.post('/auth/register/', data),
@@ -28,7 +20,6 @@ export const authAPI = {
   profile: () => api.get('/auth/profile/'),
 }
 
-// Inventory APIs
 export const inventoryAPI = {
   getProducts: () => api.get('/inventory/products/'),
   addProduct: (data) => api.post('/inventory/products/', data),
@@ -41,7 +32,6 @@ export const inventoryAPI = {
   getSuppliers: () => api.get('/inventory/suppliers/'),
 }
 
-// Billing APIs
 export const billingAPI = {
   getCustomers: () => api.get('/billing/customers/'),
   addCustomer: (data) => api.post('/billing/customers/', data),
@@ -51,17 +41,16 @@ export const billingAPI = {
   getSummary: () => api.get('/billing/summary/'),
 }
 
-// Super Admin APIs — Founder Command Center
 export const superAdminAPI = {
-  // Platform stats — Overview KPIs
+  // Overview KPIs
   getStats: () => api.get('/superadmin/stats/'),
-
-  // Businesses (tenants)
+  // Needs Attention + Trend + Activity Feed
+  getDashboard: () => api.get('/superadmin/dashboard/'),
+  // Businesses
   getTenants: () => api.get('/superadmin/tenants/'),
   toggleTenant: (id) => api.put(`/superadmin/tenants/${id}/toggle/`),
   grantAccess: (id) => api.put(`/superadmin/tenants/${id}/grant-access/`),
   upgradeTenant: (id) => api.put(`/superadmin/tenants/${id}/upgrade/`),
-
   // Users
   getUsers: () => api.get('/superadmin/users/'),
   toggleUser: (id) => api.put(`/superadmin/users/${id}/toggle/`),

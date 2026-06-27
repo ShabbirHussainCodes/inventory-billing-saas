@@ -357,3 +357,125 @@ def tenant_reports(request, tenant_id):
         'low_stock_products': low_stock,
         'low_stock_count': len(low_stock),
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_data(request):
+    """
+    Overview dashboard ka operational data —
+    Needs Attention panel, Signup Trend (7 days), Activity Feed.
+    Koi naya model nahi, sab existing timestamps se derive kiya.
+    """
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    import datetime
+    from django.db.models import Count, Q, Subquery, OuterRef
+    from django.db.models.functions import TruncDate
+    from billing.models import Invoice
+
+    now = timezone.now()
+    today = now.date()
+    threshold_30d = now - datetime.timedelta(days=30)
+    seven_days_ago = today - datetime.timedelta(days=6)
+
+    # ── Needs Attention ──────────────────────────────────────────────────────
+
+    # Per-tenant ki last invoice date (subquery — N+1 nahi)
+    latest_invoice_subq = (
+        Invoice.objects.filter(tenant=OuterRef('pk'))
+        .order_by('-created_at')
+        .values('created_at')[:1]
+    )
+
+    # Dormant: active, 30d+ purane, koi invoice activity nahi 30d mein
+    dormant_count = (
+        Tenant.objects.filter(is_active=True, created_at__lt=threshold_30d)
+        .annotate(last_invoice_date=Subquery(latest_invoice_subq))
+        .filter(
+            Q(last_invoice_date__isnull=True) |
+            Q(last_invoice_date__lt=threshold_30d)
+        )
+        .count()
+    )
+
+    # Upsell: free tier + active + real usage (3+ invoices) — single aggregation
+    upsell_count = (
+        Invoice.objects
+        .filter(tenant__access_type='free_tier', tenant__is_active=True)
+        .values('tenant')
+        .annotate(cnt=Count('id'))
+        .filter(cnt__gte=3)
+        .count()
+    )
+
+    # Suspended: abhi inactive hain
+    suspended_count = Tenant.objects.filter(is_active=False).count()
+
+    # ── Signup Trend (last 7 days — single DB query) ─────────────────────────
+
+    signups_qs = (
+        Tenant.objects
+        .filter(created_at__date__gte=seven_days_ago)
+        .annotate(day=TruncDate('created_at'))
+        .values('day')
+        .annotate(count=Count('id'))
+        .order_by('day')
+    )
+    signups_map = {item['day']: item['count'] for item in signups_qs}
+
+    trend = []
+    for i in range(7):
+        day = seven_days_ago + datetime.timedelta(days=i)
+        trend.append({
+            'date': day.strftime('%d %b'),
+            'count': signups_map.get(day, 0),
+        })
+
+    # ── Activity Feed (derived from existing timestamps) ──────────────────────
+
+    activities = []
+
+    for t in Tenant.objects.order_by('-created_at')[:5]:
+        activities.append({
+            'type': 'business_registered',
+            'description': f'{t.name} registered',
+            'timestamp': t.created_at.isoformat(),
+        })
+
+    for u in (
+        CustomUser.objects
+        .exclude(role='super_admin')
+        .select_related('tenant')
+        .order_by('-created_at')[:5]
+    ):
+        tenant_name = u.tenant.name if u.tenant else '—'
+        activities.append({
+            'type': 'user_joined',
+            'description': f'New user joined · {tenant_name}',
+            'timestamp': u.created_at.isoformat(),
+        })
+
+    for inv in (
+        Invoice.objects
+        .select_related('tenant')
+        .order_by('-created_at')[:5]
+    ):
+        activities.append({
+            'type': 'invoice_created',
+            'description': f'Invoice created · {inv.tenant.name}',
+            'timestamp': inv.created_at.isoformat(),
+        })
+
+    activities.sort(key=lambda x: x['timestamp'], reverse=True)
+
+    return Response({
+        'needs_attention': {
+            'dormant': dormant_count,
+            'upsell': upsell_count,
+            'suspended': suspended_count,
+        },
+        'signup_trend': trend,
+        'activity_feed': activities[:8],
+    })

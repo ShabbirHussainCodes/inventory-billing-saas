@@ -5,6 +5,9 @@ urlpatterns = [
     # Platform Stats
     path('stats/', views.platform_stats, name='admin-stats'),
 
+    # Overview Dashboard (Needs Attention + Trend + Activity)
+    path('dashboard/', views.dashboard_data, name='admin-dashboard'),
+
     # Tenant Management
     path('tenants/', views.tenant_list, name='admin-tenants'),
     path('tenants/<uuid:tenant_id>/toggle/', views.toggle_tenant, name='admin-toggle-tenant'),
