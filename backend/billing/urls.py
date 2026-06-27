@@ -12,4 +12,5 @@ urlpatterns = [
 
     # Dashboard Summary
     path('summary/', views.invoice_summary, name='invoice-summary'),
+    path('invoices/<uuid:pk>/status/', views.invoice_update_status, name='invoice-status'),
 ]

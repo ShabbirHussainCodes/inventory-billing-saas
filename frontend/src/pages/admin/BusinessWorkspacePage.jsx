@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom"
 import { superAdminAPI } from "../../services/api"
 import WorkspaceInventory from "../../components/workspace/WorkspaceInventory"
 import WorkspaceCustomers from "../../components/workspace/WorkspaceCustomers"
+import WorkspaceInvoices from "../../components/workspace/WorkspaceInvoices"
 
 // ─── Workspace navigation config ─────────────────────────────────────────────
 // soon: false → active (click karo, content load hoga)
@@ -12,7 +13,7 @@ const WORKSPACE_NAV = [
   { key: "dashboard",  label: "Dashboard",  icon: "▦", soon: true },
   { key: "inventory",  label: "Inventory",  icon: "⊟", soon: false },
   { key: "customers",  label: "Customers",  icon: "◎", soon: false },
-  { key: "invoices",   label: "Invoices",   icon: "⊞", soon: true },
+  { key: "invoices",   label: "Invoices",   icon: "⊞", soon: false },
   { key: "reports",    label: "Reports",    icon: "⊿", soon: true },
 ]
 
@@ -52,6 +53,10 @@ function WorkspaceContent({ activeSection, isEditMode, tenantName }) {
 
   if (activeSection === "customers") {
     return <WorkspaceCustomers isEditMode={isEditMode} />
+  }
+
+  if (activeSection === "invoices") {
+    return <WorkspaceInvoices isEditMode={isEditMode} />
   }
 
   // Default — Dashboard placeholder

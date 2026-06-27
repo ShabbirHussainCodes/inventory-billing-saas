@@ -137,6 +137,29 @@ def invoice_detail(request, pk):
     return Response(serializer.data)
 
 
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def invoice_update_status(request, pk):
+    """Invoice ka status update karo — sirf status field"""
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    try:
+        invoice = Invoice.objects.get(pk=pk, tenant=tenant)
+    except Invoice.DoesNotExist:
+        return Response({'error': 'Invoice not found.'}, status=404)
+
+    new_status = request.data.get('status')
+    valid = ['draft', 'sent', 'paid', 'cancelled']
+    if new_status not in valid:
+        return Response({'error': f"Status must be one of: {', '.join(valid)}"}, status=400)
+
+    invoice.status = new_status
+    invoice.save(update_fields=['status'])
+    return Response({'id': str(invoice.id), 'status': invoice.status})
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def invoice_summary(request):
