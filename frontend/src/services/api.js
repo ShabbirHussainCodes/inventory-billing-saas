@@ -51,4 +51,21 @@ export const billingAPI = {
   getSummary: () => api.get('/billing/summary/'),
 }
 
+// Super Admin APIs — Founder Command Center
+export const superAdminAPI = {
+  // Platform stats — Overview KPIs
+  getStats: () => api.get('/superadmin/stats/'),
+
+  // Businesses (tenants)
+  getTenants: () => api.get('/superadmin/tenants/'),
+  toggleTenant: (id) => api.put(`/superadmin/tenants/${id}/toggle/`),
+  grantAccess: (id) => api.put(`/superadmin/tenants/${id}/grant-access/`),
+  upgradeTenant: (id) => api.put(`/superadmin/tenants/${id}/upgrade/`),
+
+  // Users
+  getUsers: () => api.get('/superadmin/users/'),
+  toggleUser: (id) => api.put(`/superadmin/users/${id}/toggle/`),
+  resetPassword: (id, data) => api.post(`/superadmin/users/${id}/reset-password/`, data),
+}
+
 export default api
