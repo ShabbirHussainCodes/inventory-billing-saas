@@ -15,14 +15,12 @@ import AdminOverview from "./pages/admin/AdminOverview"
 import AdminBusinesses from "./pages/admin/AdminBusinesses"
 import AdminUsers from "./pages/admin/AdminUsers"
 import AdminSettings from "./pages/admin/AdminSettings"
+import BusinessWorkspacePage from "./pages/admin/BusinessWorkspacePage"
 
 import { getToken } from "./utils/auth"
 
-// Sirf logged-in users (kisi bhi role) ke liye
 function ProtectedRoute({ children }) {
-  if (!getToken()) {
-    return <Navigate to="/" replace />
-  }
+  if (!getToken()) return <Navigate to="/" replace />
   return children
 }
 
@@ -35,49 +33,16 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
 
         {/* Business owner / staff */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <DashboardPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/products"
-          element={
-            <ProtectedRoute>
-              <ProductsPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/invoices"
-          element={
-            <ProtectedRoute>
-              <InvoicesPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/customers"
-          element={
-            <ProtectedRoute>
-              <CustomersPage />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+        <Route path="/products" element={<ProtectedRoute><ProductsPage /></ProtectedRoute>} />
+        <Route path="/invoices" element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>} />
+        <Route path="/customers" element={<ProtectedRoute><CustomersPage /></ProtectedRoute>} />
 
-        {/* Founder Command Center — nested under one layout, super_admin only */}
-        <Route
-          element={
-            <RoleRoute role="super_admin">
-              <AdminLayout />
-            </RoleRoute>
-          }
-        >
+        {/* Founder Command Center — super_admin only */}
+        <Route element={<RoleRoute role="super_admin"><AdminLayout /></RoleRoute>}>
           <Route path="/admin" element={<AdminOverview />} />
           <Route path="/admin/businesses" element={<AdminBusinesses />} />
+          <Route path="/admin/businesses/:id" element={<BusinessWorkspacePage />} />
           <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/settings" element={<AdminSettings />} />
         </Route>

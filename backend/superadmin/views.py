@@ -48,20 +48,47 @@ def tenant_list(request):
     if not is_super_admin(request.user):
         return Response({'error': 'Access denied.'}, status=403)
 
-    tenants = Tenant.objects.all().order_by('-created_at')
+    from decimal import Decimal
+    from django.db.models import Count, Max, Sum, Subquery, OuterRef
+    from django.db.models.functions import Coalesce
+    from billing.models import Invoice
+
+    # Owner email — pehle business_owner ka email (Subquery)
+    owner_email_subq = CustomUser.objects.filter(
+        tenant=OuterRef('pk'), role='business_owner'
+    ).values('email')[:1]
+
+    # Single annotated query — N+1 nahi
+    tenants = Tenant.objects.annotate(
+        invoice_count=Count('invoices', distinct=True),
+        last_active=Max('invoices__created_at'),
+        revenue=Coalesce(Sum('invoices__total_amount'), Decimal('0.00')),
+        owner_email=Subquery(owner_email_subq),
+    ).order_by('-created_at')
+
+    # Users count per tenant — ek alag aggregation query (2 queries total)
+    user_counts = dict(
+        CustomUser.objects
+        .values('tenant_id')
+        .annotate(cnt=Count('id'))
+        .values_list('tenant_id', 'cnt')
+    )
+
     data = []
-    for tenant in tenants:
-        users_count = CustomUser.objects.filter(tenant=tenant).count()
+    for t in tenants:
         data.append({
-            'id': str(tenant.id),
-            'name': tenant.name,
-            'country': tenant.country,
-            'currency': tenant.currency,
-            'tax_label': tenant.tax_label,
-            'access_type': tenant.access_type,
-            'is_active': tenant.is_active,
-            'users_count': users_count,
-            'created_at': tenant.created_at,
+            'id': str(t.id),
+            'name': t.name,
+            'owner_email': t.owner_email or '—',
+            'country': t.country or '—',
+            'currency': t.currency or 'INR',
+            'access_type': t.access_type,
+            'is_active': t.is_active,
+            'users_count': user_counts.get(t.id, 0),
+            'invoice_count': t.invoice_count,
+            'last_active': t.last_active.isoformat() if t.last_active else None,
+            'revenue': float(t.revenue),
+            'created_at': t.created_at.isoformat(),
         })
 
     return Response(data)
