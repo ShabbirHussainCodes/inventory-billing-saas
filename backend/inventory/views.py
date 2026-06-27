@@ -9,6 +9,7 @@ from .serializers import (
     ProductSerializer,
     StockMovementSerializer
 )
+from superadmin.utils import get_active_tenant, is_edit_mode
 
 
 # ─── CATEGORY VIEWS ───────────────────────────────────────
@@ -16,7 +17,9 @@ from .serializers import (
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def category_list(request):
-    tenant = request.user.tenant
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
 
     if request.method == 'GET':
         categories = Category.objects.filter(
@@ -45,7 +48,9 @@ def category_list(request):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def supplier_list(request):
-    tenant = request.user.tenant
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
 
     if request.method == 'GET':
         suppliers = Supplier.objects.filter(
@@ -76,7 +81,9 @@ def supplier_list(request):
 def product_list(request):
     # Sirf us tenant ke products dikhenge
     # Multi-tenant isolation yahan hoti hai
-    tenant = request.user.tenant
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
 
     if request.method == 'GET':
         products = Product.objects.filter(
@@ -103,7 +110,9 @@ def product_list(request):
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def product_detail(request, pk):
-    tenant = request.user.tenant
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
 
     try:
         product = Product.objects.get(pk=pk, tenant=tenant)
@@ -145,7 +154,9 @@ def product_detail(request, pk):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def low_stock_products(request):
-    tenant = request.user.tenant
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
     products = Product.objects.filter(
         tenant=tenant,
         is_active=True
@@ -164,7 +175,9 @@ def low_stock_products(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def add_stock_movement(request):
-    tenant = request.user.tenant
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
 
     serializer = StockMovementSerializer(data=request.data)
     if serializer.is_valid():

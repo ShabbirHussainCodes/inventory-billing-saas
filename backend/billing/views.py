@@ -8,6 +8,7 @@ from .serializers import (
     InvoiceSerializer,
     InvoiceCreateSerializer
 )
+from superadmin.utils import get_active_tenant, is_edit_mode
 
 
 # ─── CUSTOMER VIEWS ───────────────────────────────────────
@@ -15,7 +16,9 @@ from .serializers import (
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def customer_list(request):
-    tenant = request.user.tenant
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
 
     if request.method == 'GET':
         customers = Customer.objects.filter(
@@ -42,7 +45,9 @@ def customer_list(request):
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def customer_detail(request, pk):
-    tenant = request.user.tenant
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
 
     try:
         customer = Customer.objects.get(pk=pk, tenant=tenant)
@@ -84,7 +89,9 @@ def customer_detail(request, pk):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def invoice_list(request):
-    tenant = request.user.tenant
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
 
     if request.method == 'GET':
         invoices = Invoice.objects.filter(tenant=tenant)
@@ -114,7 +121,9 @@ def invoice_list(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def invoice_detail(request, pk):
-    tenant = request.user.tenant
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
 
     try:
         invoice = Invoice.objects.get(pk=pk, tenant=tenant)
@@ -131,7 +140,9 @@ def invoice_detail(request, pk):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def invoice_summary(request):
-    tenant = request.user.tenant
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
     invoices = Invoice.objects.filter(tenant=tenant)
 
     total_revenue = sum(

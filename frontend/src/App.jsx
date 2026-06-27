@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 
-// Auth-owner (business) app
+// Business owner app
 import LoginPage from "./pages/LoginPage"
 import RegisterPage from "./pages/RegisterPage"
 import DashboardPage from "./pages/DashboardPage"
@@ -8,13 +8,15 @@ import ProductsPage from "./pages/ProductsPage"
 import InvoicesPage from "./pages/InvoicesPage"
 import CustomersPage from "./pages/CustomersPage"
 
-// Founder Command Center
+// Founder Command Center (with AdminLayout sidebar)
 import RoleRoute from "./components/RoleRoute"
 import AdminLayout from "./components/admin/AdminLayout"
 import AdminOverview from "./pages/admin/AdminOverview"
 import AdminBusinesses from "./pages/admin/AdminBusinesses"
 import AdminUsers from "./pages/admin/AdminUsers"
 import AdminSettings from "./pages/admin/AdminSettings"
+
+// Business Workspace (own full-screen layout — no admin sidebar)
 import BusinessWorkspacePage from "./pages/admin/BusinessWorkspacePage"
 
 import { getToken } from "./utils/auth"
@@ -38,14 +40,24 @@ function App() {
         <Route path="/invoices" element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>} />
         <Route path="/customers" element={<ProtectedRoute><CustomersPage /></ProtectedRoute>} />
 
-        {/* Founder Command Center — super_admin only */}
+        {/* Founder Command Center — AdminLayout sidebar ke saath */}
         <Route element={<RoleRoute role="super_admin"><AdminLayout /></RoleRoute>}>
           <Route path="/admin" element={<AdminOverview />} />
           <Route path="/admin/businesses" element={<AdminBusinesses />} />
-          <Route path="/admin/businesses/:id" element={<BusinessWorkspacePage />} />
           <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/settings" element={<AdminSettings />} />
         </Route>
+
+        {/* Business Workspace — apna full-screen layout, admin sidebar nahi
+            RoleRoute guard hai — sirf super_admin access kar sake */}
+        <Route
+          path="/admin/businesses/:id"
+          element={
+            <RoleRoute role="super_admin">
+              <BusinessWorkspacePage />
+            </RoleRoute>
+          }
+        />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

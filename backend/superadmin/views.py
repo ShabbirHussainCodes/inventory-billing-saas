@@ -506,3 +506,125 @@ def dashboard_data(request):
         'signup_trend': trend,
         'activity_feed': activities[:8],
     })
+
+
+# ── Phase 2 — Founder Support Mode APIs ──────────────────────────────────────
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def enter_workspace(request, tenant_id):
+    """
+    Founder kisi business ke workspace mein ghusta hai.
+    - Pehle se active session band karo (ek waqt mein sirf ek session)
+    - Naya SupportSession record banao
+    - Mode: 'view' (default, safe)
+    """
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+    except Tenant.DoesNotExist:
+        return Response({'error': 'Business not found.'}, status=404)
+
+    from superadmin.models import SupportSession
+
+    # Pehle se active sessions band karo
+    SupportSession.objects.filter(
+        founder=request.user, is_active=True
+    ).update(is_active=False, ended_at=timezone.now())
+
+    # Naya session banao
+    mode = request.data.get('mode', 'view')
+    if mode not in ['view', 'edit']:
+        mode = 'view'
+
+    session = SupportSession.objects.create(
+        founder=request.user,
+        tenant=tenant,
+        mode=mode
+    )
+
+    return Response({
+        'session_id': str(session.id),
+        'tenant_id': str(tenant.id),
+        'tenant_name': tenant.name,
+        'mode': session.mode,
+        'started_at': session.started_at.isoformat(),
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def exit_workspace(request):
+    """Founder workspace se bahar nikalta hai — session band karo."""
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    from superadmin.models import SupportSession
+
+    SupportSession.objects.filter(
+        founder=request.user, is_active=True
+    ).update(is_active=False, ended_at=timezone.now())
+
+    return Response({'message': 'Workspace exited successfully.'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def switch_mode(request):
+    """View ↔ Edit mode switch karo current active session mein."""
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    mode = request.data.get('mode')
+    if mode not in ['view', 'edit']:
+        return Response({'error': "Mode must be 'view' or 'edit'."}, status=400)
+
+    from superadmin.models import SupportSession
+
+    session = SupportSession.objects.filter(
+        founder=request.user, is_active=True
+    ).first()
+
+    if not session:
+        return Response({'error': 'No active support session.'}, status=404)
+
+    session.mode = mode
+    session.save(update_fields=['mode'])
+
+    return Response({
+        'session_id': str(session.id),
+        'tenant_id': str(session.tenant_id),
+        'mode': session.mode,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_active_session(request):
+    """Frontend check kare ki founder abhi kisi workspace mein hai ya nahi."""
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    from superadmin.models import SupportSession
+
+    session = (
+        SupportSession.objects
+        .filter(founder=request.user, is_active=True)
+        .select_related('tenant')
+        .first()
+    )
+
+    if not session:
+        return Response({'session': None})
+
+    return Response({
+        'session': {
+            'session_id': str(session.id),
+            'tenant_id': str(session.tenant.id),
+            'tenant_name': session.tenant.name,
+            'mode': session.mode,
+            'started_at': session.started_at.isoformat(),
+        }
+    })

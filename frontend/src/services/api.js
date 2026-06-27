@@ -42,19 +42,30 @@ export const billingAPI = {
 }
 
 export const superAdminAPI = {
-  // Overview KPIs
+  // Overview
   getStats: () => api.get('/superadmin/stats/'),
-  // Needs Attention + Trend + Activity Feed
   getDashboard: () => api.get('/superadmin/dashboard/'),
+
   // Businesses
   getTenants: () => api.get('/superadmin/tenants/'),
   toggleTenant: (id) => api.put(`/superadmin/tenants/${id}/toggle/`),
   grantAccess: (id) => api.put(`/superadmin/tenants/${id}/grant-access/`),
   upgradeTenant: (id) => api.put(`/superadmin/tenants/${id}/upgrade/`),
+
   // Users
   getUsers: () => api.get('/superadmin/users/'),
   toggleUser: (id) => api.put(`/superadmin/users/${id}/toggle/`),
   resetPassword: (id, data) => api.post(`/superadmin/users/${id}/reset-password/`, data),
+
+  // ── Phase 2 — Founder Support Mode ──
+  enterWorkspace: (tenantId, mode = 'view') =>
+    api.post(`/superadmin/workspace/enter/${tenantId}/`, { mode }),
+  exitWorkspace: () =>
+    api.post('/superadmin/workspace/exit/'),
+  switchMode: (mode) =>
+    api.post('/superadmin/workspace/switch-mode/', { mode }),
+  getActiveSession: () =>
+    api.get('/superadmin/workspace/session/'),
 }
 
 export default api
