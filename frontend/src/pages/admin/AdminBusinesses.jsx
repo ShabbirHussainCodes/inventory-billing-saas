@@ -58,20 +58,36 @@ function DotsIcon() {
 
 function ActionMenu({ business, onAction }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+  const [pos, setPos] = useState({ top: 0, right: 0 })
+  const btnRef = useRef(null)
+  const dropRef = useRef(null)
 
   useEffect(() => {
     const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+      if (
+        dropRef.current && !dropRef.current.contains(e.target) &&
+        btnRef.current && !btnRef.current.contains(e.target)
+      ) setOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // position: fixed — table/stacking context se bahar render hoga
+  // getBoundingClientRect() se button ki exact screen position milti hai
+  const toggle = () => {
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 4, right: window.innerWidth - r.right })
+    }
+    setOpen((o) => !o)
+  }
+
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
-        onClick={() => setOpen((o) => !o)}
+        ref={btnRef}
+        onClick={toggle}
         className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-50 transition"
         aria-label="More actions"
       >
@@ -79,7 +95,11 @@ function ActionMenu({ business, onAction }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 z-20 mt-1 w-48 rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+        <div
+          ref={dropRef}
+          style={{ position: 'fixed', top: pos.top, right: pos.right, zIndex: 9999 }}
+          className="w-48 rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+        >
           {business.is_active ? (
             <button
               onClick={() => { onAction('suspend', business); setOpen(false) }}
@@ -113,7 +133,7 @@ function ActionMenu({ business, onAction }) {
           )}
         </div>
       )}
-    </div>
+    </>
   )
 }
 
