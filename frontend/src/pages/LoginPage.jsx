@@ -19,6 +19,7 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError("")
+    localStorage.clear()
 
     try {
       const response = await authAPI.login(formData)
