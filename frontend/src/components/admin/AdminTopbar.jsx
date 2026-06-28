@@ -1,17 +1,24 @@
 import { useNavigate } from "react-router-dom"
 import { clearAuth } from "../../utils/auth"
+import { authAPI } from "../../services/api"
 import Icon from "./icons"
 
-// Top navigation bar.
-// Props:
-//   onMenuClick -> mobile pe sidebar drawer toggle karne ke liye
-//   title       -> current page ka naam (har page apna title pass karega)
 export default function AdminTopbar({ onMenuClick = () => {}, title = "" }) {
   const navigate = useNavigate()
 
-  const handleLogout = () => {
-    clearAuth()
-    navigate("/")
+  const handleLogout = async () => {
+    try {
+      // Refresh token blacklist karo — server side logout
+      const refresh = localStorage.getItem("refresh_token")
+      if (refresh) {
+        await authAPI.logout({ refresh })
+      }
+    } catch {
+      // API fail hone pe bhi logout karo — client side always clear
+    } finally {
+      clearAuth()
+      navigate("/")
+    }
   }
 
   return (
