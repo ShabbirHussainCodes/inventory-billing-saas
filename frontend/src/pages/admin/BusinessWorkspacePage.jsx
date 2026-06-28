@@ -96,7 +96,7 @@ export default function BusinessWorkspacePage() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [activeSection, setActiveSection] = useState("dashboard")
+  const [activeSection, setActiveSection] = useState("inventory")
   const [confirmEdit, setConfirmEdit] = useState(false)
   const [modeLoading, setModeLoading] = useState(false)
   const [exiting, setExiting] = useState(false)
