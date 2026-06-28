@@ -73,13 +73,25 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
                 'customer': 'Invalid customer.'
             })
 
-        # Product ownership check — har item ke liye
+        # Product ownership + stock availability check — har item ke liye
         items = attrs.get('items', [])
         for i, item in enumerate(items):
             product = item.get('product')
+            quantity = item.get('quantity', 0)
+
+            # Ownership check
             if product and product.tenant != tenant:
                 raise serializers.ValidationError({
                     'items': f'Invalid product in item {i + 1}.'
+                })
+
+            # Fix 5: Stock availability check — negative stock nahi hoga
+            if product and product.stock_quantity < quantity:
+                raise serializers.ValidationError({
+                    'items': (
+                        f'"{product.name}" mein sirf {product.stock_quantity} '
+                        f'units available hain. Requested: {quantity}.'
+                    )
                 })
 
         return attrs
@@ -116,9 +128,21 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
                 item_data['cost_price'] = product.cost_price
                 item_data['tax_rate'] = product.tax_rate
 
+                # Fix 5 already validate() mein check ho gaya
                 # Stock update karo
                 product.stock_quantity -= item_data['quantity']
                 product.save()
+
+                # Fix 6: StockMovement record banao — history + AI ke liye zaroori
+                from inventory.models import StockMovement
+                StockMovement.objects.create(
+                    tenant=tenant,
+                    product=product,
+                    movement_type='out',
+                    quantity=item_data['quantity'],
+                    notes=f'Invoice sale',
+                    user=user,
+                )
 
             invoice_item = InvoiceItem.objects.create(
                 invoice=invoice,
