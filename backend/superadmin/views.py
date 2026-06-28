@@ -707,3 +707,118 @@ def audit_logs(request):
         })
 
     return Response(data)
+
+
+# ── Phase 3 — Platform Analytics ─────────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def platform_analytics(request):
+    """
+    Founder ke liye platform-wide analytics.
+    Sab DB-level aggregation — koi N+1 nahi.
+    """
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    import datetime
+    from django.db.models import Count, Q, Subquery, OuterRef
+    from django.db.models.functions import TruncDate
+    from billing.models import Invoice
+
+    now = timezone.now()
+    today = now.date()
+    thirty_days_ago = today - datetime.timedelta(days=29)
+    threshold_30d = now - datetime.timedelta(days=30)
+
+    # ── 1. Signup trend — last 30 days (single query) ────────────────────────
+
+    signups_qs = (
+        Tenant.objects
+        .filter(created_at__date__gte=thirty_days_ago)
+        .annotate(day=TruncDate('created_at'))
+        .values('day')
+        .annotate(count=Count('id'))
+        .order_by('day')
+    )
+    signups_map = {item['day']: item['count'] for item in signups_qs}
+
+    signup_trend = []
+    for i in range(30):
+        day = thirty_days_ago + datetime.timedelta(days=i)
+        signup_trend.append({
+            'date': day.strftime('%d %b'),
+            'count': signups_map.get(day, 0),
+        })
+
+    # ── 2. Geographic distribution — top 8 countries ─────────────────────────
+
+    geo_qs = (
+        Tenant.objects
+        .values('country')
+        .annotate(count=Count('id'))
+        .order_by('-count')[:8]
+    )
+    geographic = [
+        {'country': g['country'] or 'Unknown', 'count': g['count']}
+        for g in geo_qs
+    ]
+
+    # ── 3. Plan distribution ──────────────────────────────────────────────────
+
+    plan_distribution = {
+        'free_tier':   Tenant.objects.filter(access_type='free_tier').count(),
+        'paid':        Tenant.objects.filter(access_type='paid').count(),
+        'admin_grant': Tenant.objects.filter(access_type='admin_grant').count(),
+    }
+
+    # ── 4. Business health breakdown ──────────────────────────────────────────
+
+    total_tenants  = Tenant.objects.count()
+    active_tenants = Tenant.objects.filter(is_active=True).count()
+    suspended      = total_tenants - active_tenants
+
+    # Dormant: active + older 30d + no invoice in 30d
+    latest_invoice_subq = (
+        Invoice.objects
+        .filter(tenant=OuterRef('pk'))
+        .order_by('-created_at')
+        .values('created_at')[:1]
+    )
+    dormant = (
+        Tenant.objects
+        .filter(is_active=True, created_at__lt=threshold_30d)
+        .annotate(last_invoice_date=Subquery(latest_invoice_subq))
+        .filter(
+            Q(last_invoice_date__isnull=True) |
+            Q(last_invoice_date__lt=threshold_30d)
+        )
+        .count()
+    )
+    healthy = active_tenants - dormant
+
+    health_breakdown = {
+        'healthy':   max(healthy, 0),
+        'dormant':   dormant,
+        'suspended': suspended,
+    }
+
+    # ── 5. Top 5 businesses by invoice activity ───────────────────────────────
+
+    top_businesses_qs = (
+        Tenant.objects
+        .annotate(invoice_count=Count('invoices'))
+        .filter(invoice_count__gt=0)
+        .order_by('-invoice_count')[:5]
+        .values('name', 'invoice_count', 'access_type', 'country')
+    )
+    top_businesses = list(top_businesses_qs)
+
+    return Response({
+        'signup_trend':     signup_trend,
+        'geographic':       geographic,
+        'plan_distribution': plan_distribution,
+        'health_breakdown': health_breakdown,
+        'top_businesses':   top_businesses,
+        'total_tenants':    total_tenants,
+    })

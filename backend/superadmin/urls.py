@@ -35,4 +35,7 @@ urlpatterns = [
 
     # ── Audit Log ──
     path('audit-logs/', views.audit_logs, name='audit-logs'),
+
+    # ── Phase 3 Analytics ──
+    path('analytics/', views.platform_analytics, name='platform-analytics'),
 ]

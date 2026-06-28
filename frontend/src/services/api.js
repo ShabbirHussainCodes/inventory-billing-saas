@@ -70,6 +70,9 @@ export const superAdminAPI = {
   getActiveSession: () =>
     api.get('/superadmin/workspace/session/'),
 
+  // ── Analytics ──
+  getAnalytics: () => api.get('/superadmin/analytics/'),
+
   // ── Audit Log ──
   getAuditLogs: (tenantId = null) => {
     const url = tenantId

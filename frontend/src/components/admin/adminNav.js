@@ -6,7 +6,7 @@ export const adminNav = [
   { to: "/admin", label: "Overview", icon: "dashboard", end: true },
   { to: "/admin/businesses", label: "Businesses", icon: "businesses" },
   { to: "/admin/users", label: "Users", icon: "users" },
-  { to: "/admin/analytics", label: "Analytics", icon: "analytics", soon: true },
+  { to: "/admin/analytics", label: "Analytics", icon: "analytics" },
   { to: "/admin/audit", label: "Audit log", icon: "audit" },
   { to: "/admin/settings", label: "Settings", icon: "settings" },
 ]
