@@ -37,7 +37,8 @@ export default function LoginPage() {
         navigate("/dashboard")
       }
     } catch (err) {
-      setError("Invalid email or password. Please try again.")
+      const msg = err?.response?.data?.error
+      setError(msg || "Invalid email or password. Please try again.")
     } finally {
       setLoading(false)
     }
