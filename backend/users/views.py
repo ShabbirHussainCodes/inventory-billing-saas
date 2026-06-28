@@ -52,6 +52,13 @@ def login_view(request):
         password = serializer.validated_data['password']
         user = authenticate(request, email=email, password=password)
         if user is not None:
+            # Tenant suspension check — super_admin ko exempt karo
+            # Suspended business ke users login nahi kar sakte
+            if user.role != 'super_admin' and user.tenant and not user.tenant.is_active:
+                return Response({
+                    'error': 'Your account has been suspended. Please contact support.'
+                }, status=status.HTTP_403_FORBIDDEN)
+
             tokens = get_tokens_for_user(user)
             return Response({
                 'message': 'Login successful.',
