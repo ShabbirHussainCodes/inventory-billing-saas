@@ -31,7 +31,10 @@ def customer_list(request):
     elif request.method == 'POST':
         serializer = CustomerSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(tenant=tenant)
+            customer = serializer.save(tenant=tenant)
+            from superadmin.audit import log_action
+            log_action(request, 'customer_created', tenant=tenant,
+                       target_type='customer', target_name=customer.name)
             return Response(
                 serializer.data,
                 status=status.HTTP_201_CREATED
@@ -69,6 +72,9 @@ def customer_detail(request, pk):
         )
         if serializer.is_valid():
             serializer.save()
+            from superadmin.audit import log_action
+            log_action(request, 'customer_updated', tenant=tenant,
+                       target_type='customer', target_name=customer.name)
             return Response(serializer.data)
         return Response(
             serializer.errors,
@@ -78,6 +84,9 @@ def customer_detail(request, pk):
     elif request.method == 'DELETE':
         customer.is_active = False
         customer.save()
+        from superadmin.audit import log_action
+        log_action(request, 'customer_deleted', tenant=tenant,
+                   target_type='customer', target_name=customer.name)
         return Response(
             {'message': 'Customer deleted successfully.'},
             status=status.HTTP_200_OK
@@ -155,8 +164,13 @@ def invoice_update_status(request, pk):
     if new_status not in valid:
         return Response({'error': f"Status must be one of: {', '.join(valid)}"}, status=400)
 
+    old_status = invoice.status
     invoice.status = new_status
     invoice.save(update_fields=['status'])
+    from superadmin.audit import log_action
+    log_action(request, 'invoice_status_changed', tenant=tenant,
+               target_type='invoice', target_name=invoice.invoice_number,
+               details={'from': old_status, 'to': new_status})
     return Response({'id': str(invoice.id), 'status': invoice.status})
 
 

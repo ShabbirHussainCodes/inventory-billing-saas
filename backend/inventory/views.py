@@ -96,7 +96,11 @@ def product_list(request):
     elif request.method == 'POST':
         serializer = ProductSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(tenant=tenant)
+            product = serializer.save(tenant=tenant)
+            from superadmin.audit import log_action
+            log_action(request, 'product_created', tenant=tenant,
+                       target_type='product', target_name=product.name,
+                       details={'sku': product.sku})
             return Response(
                 serializer.data,
                 status=status.HTTP_201_CREATED
@@ -134,6 +138,9 @@ def product_detail(request, pk):
         )
         if serializer.is_valid():
             serializer.save()
+            from superadmin.audit import log_action
+            log_action(request, 'product_updated', tenant=tenant,
+                       target_type='product', target_name=product.name)
             return Response(serializer.data)
         return Response(
             serializer.errors,
@@ -143,6 +150,9 @@ def product_detail(request, pk):
     elif request.method == 'DELETE':
         product.is_active = False
         product.save()
+        from superadmin.audit import log_action
+        log_action(request, 'product_deleted', tenant=tenant,
+                   target_type='product', target_name=product.name)
         return Response(
             {'message': 'Product deleted successfully.'},
             status=status.HTTP_200_OK

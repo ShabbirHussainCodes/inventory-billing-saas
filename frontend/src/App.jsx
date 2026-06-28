@@ -15,6 +15,7 @@ import AdminOverview from "./pages/admin/AdminOverview"
 import AdminBusinesses from "./pages/admin/AdminBusinesses"
 import AdminUsers from "./pages/admin/AdminUsers"
 import AdminSettings from "./pages/admin/AdminSettings"
+import AuditLogPage from "./pages/admin/AuditLogPage"
 
 // Business Workspace (own full-screen layout — no admin sidebar)
 import BusinessWorkspacePage from "./pages/admin/BusinessWorkspacePage"
@@ -46,6 +47,7 @@ function App() {
           <Route path="/admin/businesses" element={<AdminBusinesses />} />
           <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/settings" element={<AdminSettings />} />
+          <Route path="/admin/audit" element={<AuditLogPage />} />
         </Route>
 
         {/* Business Workspace — apna full-screen layout, admin sidebar nahi

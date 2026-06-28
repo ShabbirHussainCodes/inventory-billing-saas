@@ -69,6 +69,14 @@ export const superAdminAPI = {
     api.post('/superadmin/workspace/switch-mode/', { mode }),
   getActiveSession: () =>
     api.get('/superadmin/workspace/session/'),
+
+  // ── Audit Log ──
+  getAuditLogs: (tenantId = null) => {
+    const url = tenantId
+      ? `/superadmin/audit-logs/?tenant_id=${tenantId}`
+      : '/superadmin/audit-logs/'
+    return api.get(url)
+  },
 }
 
 export default api

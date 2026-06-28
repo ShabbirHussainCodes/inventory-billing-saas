@@ -32,4 +32,7 @@ urlpatterns = [
     path('workspace/exit/', views.exit_workspace, name='exit-workspace'),
     path('workspace/switch-mode/', views.switch_mode, name='switch-mode'),
     path('workspace/session/', views.get_active_session, name='active-session'),
+
+    # ── Audit Log ──
+    path('audit-logs/', views.audit_logs, name='audit-logs'),
 ]

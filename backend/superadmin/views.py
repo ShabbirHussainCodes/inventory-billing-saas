@@ -545,6 +545,11 @@ def enter_workspace(request, tenant_id):
         mode=mode
     )
 
+    from superadmin.audit import log_action
+    log_action(request, 'workspace_entered', tenant=tenant,
+               target_type='session', target_name=tenant.name,
+               details={'mode': mode})
+
     return Response({
         'session_id': str(session.id),
         'tenant_id': str(tenant.id),
@@ -563,9 +568,20 @@ def exit_workspace(request):
 
     from superadmin.models import SupportSession
 
+    session = SupportSession.objects.filter(
+        founder=request.user, is_active=True
+    ).select_related('tenant').first()
+
+    tenant_ref = session.tenant if session else None
+
     SupportSession.objects.filter(
         founder=request.user, is_active=True
     ).update(is_active=False, ended_at=timezone.now())
+
+    if tenant_ref:
+        from superadmin.audit import log_action
+        log_action(request, 'workspace_exited', tenant=tenant_ref,
+                   target_type='session', target_name=tenant_ref.name)
 
     return Response({'message': 'Workspace exited successfully.'})
 
@@ -590,8 +606,14 @@ def switch_mode(request):
     if not session:
         return Response({'error': 'No active support session.'}, status=404)
 
+    old_mode = session.mode
     session.mode = mode
     session.save(update_fields=['mode'])
+
+    from superadmin.audit import log_action
+    log_action(request, 'mode_switched', tenant=session.tenant,
+               target_type='session', target_name=session.tenant.name,
+               details={'from': old_mode, 'to': mode})
 
     return Response({
         'session_id': str(session.id),
@@ -628,3 +650,60 @@ def get_active_session(request):
             'started_at': session.started_at.isoformat(),
         }
     })
+
+
+# ── Audit Log API ─────────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def audit_logs(request):
+    """
+    Founder ke liye audit logs fetch karo.
+    Optional filter: ?tenant_id=<uuid> — ek specific business ke logs
+    """
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    from superadmin.models import AuditLog
+
+    logs = AuditLog.objects.select_related('actor', 'tenant').order_by('-created_at')
+
+    # Optional tenant filter
+    tenant_id = request.query_params.get('tenant_id')
+    if tenant_id:
+        logs = logs.filter(tenant_id=tenant_id)
+
+    # Last 200 logs — pagination Phase 4 mein
+    logs = logs[:200]
+
+    # Human-readable action labels
+    ACTION_LABELS = {
+        'workspace_entered':      'Entered workspace',
+        'workspace_exited':       'Exited workspace',
+        'mode_switched':          'Switched mode',
+        'product_created':        'Product added',
+        'product_updated':        'Product updated',
+        'product_deleted':        'Product deleted',
+        'customer_created':       'Customer added',
+        'customer_updated':       'Customer updated',
+        'customer_deleted':       'Customer deleted',
+        'invoice_status_changed': 'Invoice status changed',
+    }
+
+    data = []
+    for log in logs:
+        data.append({
+            'id': str(log.id),
+            'actor_email': log.actor.email,
+            'tenant_name': log.tenant.name,
+            'tenant_id': str(log.tenant.id),
+            'action': log.action,
+            'action_label': ACTION_LABELS.get(log.action, log.action),
+            'target_type': log.target_type,
+            'target_name': log.target_name,
+            'details': log.details,
+            'is_support_action': log.is_support_action,
+            'created_at': log.created_at.isoformat(),
+        })
+
+    return Response(data)

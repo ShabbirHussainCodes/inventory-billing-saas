@@ -6,12 +6,7 @@ import uuid
 class SupportSession(models.Model):
     """
     Founder Support Mode session tracker.
-
     Jab founder kisi client ke workspace mein ghusta hai — yeh record banta hai.
-    get_active_tenant() is model se resolve karta hai ki abhi kaun sa tenant active hai.
-
-    is_active=True   → founder abhi us business mein hai
-    is_active=False  → founder exit kar chuka hai
     """
 
     MODE_CHOICES = [
@@ -20,7 +15,6 @@ class SupportSession(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-
     founder = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -31,11 +25,8 @@ class SupportSession(models.Model):
         on_delete=models.CASCADE,
         related_name='support_sessions'
     )
-
-    # View = sirf dekh sakta hai | Edit = changes kar sakta hai
     mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='view')
     is_active = models.BooleanField(default=True)
-
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
 
@@ -44,3 +35,81 @@ class SupportSession(models.Model):
 
     def __str__(self):
         return f"{self.founder.email} → {self.tenant.name} ({self.mode})"
+
+
+class AuditLog(models.Model):
+    """
+    Production-grade audit log for Founder Support Mode.
+
+    Har founder action yahan record hota hai — kab, kis business mein,
+    kya kiya, kya change hua. Yeh accountability aur transparency ke liye hai.
+
+    is_support_action=True  → founder ne client ke workspace mein kiya
+    is_support_action=False → future mein normal user actions ke liye
+    """
+
+    ACTION_CHOICES = [
+        # Session events
+        ('workspace_entered',       'Workspace Entered'),
+        ('workspace_exited',        'Workspace Exited'),
+        ('mode_switched',           'Mode Switched'),
+        # Product events
+        ('product_created',         'Product Created'),
+        ('product_updated',         'Product Updated'),
+        ('product_deleted',         'Product Deleted'),
+        # Customer events
+        ('customer_created',        'Customer Created'),
+        ('customer_updated',        'Customer Updated'),
+        ('customer_deleted',        'Customer Deleted'),
+        # Invoice events
+        ('invoice_status_changed',  'Invoice Status Changed'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Who performed the action
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='audit_logs'
+    )
+
+    # Which business was affected
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='audit_logs'
+    )
+
+    # What happened
+    action = models.CharField(max_length=50, choices=ACTION_CHOICES)
+
+    # What was affected — human readable
+    target_type = models.CharField(max_length=50, blank=True)   # 'product', 'customer', 'invoice', 'session'
+    target_name = models.CharField(max_length=255, blank=True)  # e.g. 'Samsung TV 43'
+
+    # Extra context — flexible JSON
+    # Examples:
+    #   mode_switched        → {'from': 'view', 'to': 'edit'}
+    #   invoice_status       → {'from': 'draft', 'to': 'paid', 'invoice_number': 'INV-2026-001'}
+    #   workspace_entered    → {'mode': 'view'}
+    details = models.JSONField(default=dict, blank=True)
+
+    # Was this a founder support action?
+    is_support_action = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            # Fast filtering by tenant (most common query)
+            models.Index(fields=['tenant', '-created_at']),
+            # Fast filtering by actor
+            models.Index(fields=['actor', '-created_at']),
+            # Fast filtering by support actions only
+            models.Index(fields=['is_support_action', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.actor.email} | {self.action} | {self.tenant.name}"
