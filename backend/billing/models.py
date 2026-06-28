@@ -80,8 +80,7 @@ class Invoice(models.Model):
     # --- Invoice Number ---
     # Auto generate hoga — INV-2026-001
     invoice_number = models.CharField(
-        max_length=50,
-        unique=True
+        max_length=50
     )
 
     # --- Dates ---
@@ -139,6 +138,8 @@ class Invoice(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        # Per-tenant unique — do alag businesses ke INV-2026-001 clash nahi karenge
+        unique_together = [('tenant', 'invoice_number')]
 
 
 class InvoiceItem(models.Model):
