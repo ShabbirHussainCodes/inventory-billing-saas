@@ -58,6 +58,32 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
             'items'
         ]
 
+    def validate(self, attrs):
+        # Cross-tenant isolation check.
+        # Invoice banane se pehle verify karo ki:
+        # 1. Customer is tenant ka hai
+        # 2. Har product is tenant ka hai
+        # Vague errors intentional — attacker ko UUID existence confirm nahi karni
+        tenant = self.context['tenant']
+
+        # Customer ownership check
+        customer = attrs.get('customer')
+        if customer and customer.tenant != tenant:
+            raise serializers.ValidationError({
+                'customer': 'Invalid customer.'
+            })
+
+        # Product ownership check — har item ke liye
+        items = attrs.get('items', [])
+        for i, item in enumerate(items):
+            product = item.get('product')
+            if product and product.tenant != tenant:
+                raise serializers.ValidationError({
+                    'items': f'Invalid product in item {i + 1}.'
+                })
+
+        return attrs
+
     def create(self, validated_data):
         from .utils import generate_invoice_number
 
