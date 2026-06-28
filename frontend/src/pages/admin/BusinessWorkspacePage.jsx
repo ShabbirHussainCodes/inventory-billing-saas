@@ -4,6 +4,7 @@ import { superAdminAPI } from "../../services/api"
 import WorkspaceInventory from "../../components/workspace/WorkspaceInventory"
 import WorkspaceCustomers from "../../components/workspace/WorkspaceCustomers"
 import WorkspaceInvoices from "../../components/workspace/WorkspaceInvoices"
+import WorkspaceReports from "../../components/workspace/WorkspaceReports"
 
 // ─── Workspace navigation config ─────────────────────────────────────────────
 // soon: false → active (click karo, content load hoga)
@@ -14,7 +15,7 @@ const WORKSPACE_NAV = [
   { key: "inventory",  label: "Inventory",  icon: "⊟", soon: false },
   { key: "customers",  label: "Customers",  icon: "◎", soon: false },
   { key: "invoices",   label: "Invoices",   icon: "⊞", soon: false },
-  { key: "reports",    label: "Reports",    icon: "⊿", soon: true },
+  { key: "reports",    label: "Reports",    icon: "⊿", soon: false },
 ]
 
 // ─── Edit mode confirmation modal ────────────────────────────────────────────
@@ -57,6 +58,10 @@ function WorkspaceContent({ activeSection, isEditMode, tenantName }) {
 
   if (activeSection === "invoices") {
     return <WorkspaceInvoices isEditMode={isEditMode} />
+  }
+
+  if (activeSection === "reports") {
+    return <WorkspaceReports />
   }
 
   // Default — Dashboard placeholder
