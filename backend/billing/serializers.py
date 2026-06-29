@@ -21,6 +21,14 @@ class CustomerSerializer(serializers.ModelSerializer):
 
 
 class InvoiceItemSerializer(serializers.ModelSerializer):
+    # Explicit field declarations — bulletproof for nested writable serializers
+    # Meta.read_only_fields alone can fail in some DRF versions
+    product_name = serializers.CharField(read_only=True)
+    subtotal     = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    tax_amount   = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    total        = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    profit       = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+
     class Meta:
         model = InvoiceItem
         fields = [
@@ -36,13 +44,7 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
             'total',
             'profit'
         ]
-        read_only_fields = [
-            'id',
-            'subtotal',
-            'tax_amount',
-            'total',
-            'profit'
-        ]
+        read_only_fields = ['id']
 
 
 class InvoiceCreateSerializer(serializers.ModelSerializer):
@@ -158,7 +160,8 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         invoice.tax_amount = tax_amount
         invoice.total_amount = subtotal + tax_amount
         invoice.total_profit = total_profit
-        invoice.status = 'sent'
+        # Status nahi set karo — model ka default 'draft' use hoga
+        # Frontend PATCH call karega agar 'sent' chahiye
         invoice.save()
 
         return invoice
