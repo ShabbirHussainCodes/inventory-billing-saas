@@ -140,6 +140,10 @@ class Invoice(models.Model):
         ordering = ['-created_at']
         # Per-tenant unique — do alag businesses ke INV-2026-001 clash nahi karenge
         unique_together = [('tenant', 'invoice_number')]
+        indexes = [
+            models.Index(fields=['tenant', 'status']),
+            models.Index(fields=['tenant', '-created_at']),
+        ]
 
 
 class InvoiceItem(models.Model):

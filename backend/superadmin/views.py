@@ -74,8 +74,16 @@ def tenant_list(request):
         .values_list('tenant_id', 'cnt')
     )
 
+    # Pagination — page aur page_size query params se
+    page = int(request.query_params.get('page', 1))
+    page_size = int(request.query_params.get('page_size', 20))
+    start = (page - 1) * page_size
+    end = start + page_size
+    total_count = tenants.count()
+    tenants_page = tenants[start:end]
+
     data = []
-    for t in tenants:
+    for t in tenants_page:
         data.append({
             'id': str(t.id),
             'name': t.name,
@@ -91,7 +99,13 @@ def tenant_list(request):
             'created_at': t.created_at.isoformat(),
         })
 
-    return Response(data)
+    return Response({
+        'count': total_count,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': (total_count + page_size - 1) // page_size,
+        'results': data,
+    })
 
 
 @api_view(['PUT'])
@@ -134,9 +148,16 @@ def user_list(request):
     if not is_super_admin(request.user):
         return Response({'error': 'Access denied.'}, status=403)
 
-    users = CustomUser.objects.exclude(role='super_admin').order_by('-created_at')
+    users = CustomUser.objects.exclude(role='super_admin').select_related('tenant').order_by('-created_at')
+    page = int(request.query_params.get('page', 1))
+    page_size = int(request.query_params.get('page_size', 20))
+    start = (page - 1) * page_size
+    end = start + page_size
+    total_count = users.count()
+    users_page = users[start:end]
+
     data = []
-    for user in users:
+    for user in users_page:
         data.append({
             'id': str(user.id),
             'email': user.email,
@@ -148,7 +169,13 @@ def user_list(request):
             'created_at': user.created_at,
         })
 
-    return Response(data)
+    return Response({
+        'count': total_count,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': (total_count + page_size - 1) // page_size,
+        'results': data,
+    })
 
 
 @api_view(['PUT'])
@@ -209,7 +236,7 @@ def tenant_invoices(request, tenant_id):
         return Response({'error': 'Tenant not found.'}, status=404)
 
     from billing.models import Invoice
-    invoices = Invoice.objects.filter(tenant=tenant).order_by('-created_at')
+    invoices = Invoice.objects.filter(tenant=tenant).select_related('customer').order_by('-created_at')
     data = []
     for inv in invoices:
         data.append({
@@ -362,24 +389,34 @@ def tenant_reports(request, tenant_id):
 
     from billing.models import Invoice
     from inventory.models import Product
+    from django.db.models import Sum, Count, F, Q
+    from django.db.models.functions import Coalesce
+    from decimal import Decimal
 
-    invoices = Invoice.objects.filter(tenant=tenant)
-    total_revenue = sum(inv.total_amount for inv in invoices)
-    total_profit = sum(inv.total_profit for inv in invoices)
-    total_invoices = invoices.count()
-    paid_invoices = invoices.filter(status='paid').count()
+    # DB-level aggregation — koi Python loop nahi
+    invoice_agg = Invoice.objects.filter(tenant=tenant).aggregate(
+        total_revenue=Coalesce(Sum('total_amount'), Decimal('0.00')),
+        total_profit=Coalesce(Sum('total_profit'), Decimal('0.00')),
+        total_invoices=Count('id'),
+        paid_invoices=Count('id', filter=Q(status='paid')),
+    )
 
     products = Product.objects.filter(tenant=tenant, is_active=True)
-    low_stock = [p.name for p in products if p.is_low_stock]
     total_products = products.count()
+
+    # DB-level low stock filter — F() expression use karo
+    low_stock = list(
+        products.filter(stock_quantity__lte=F('reorder_point'))
+        .values_list('name', flat=True)
+    )
 
     return Response({
         'tenant': tenant.name,
         'currency': tenant.currency,
-        'total_revenue': float(total_revenue),
-        'total_profit': float(total_profit),
-        'total_invoices': total_invoices,
-        'paid_invoices': paid_invoices,
+        'total_revenue': float(invoice_agg['total_revenue']),
+        'total_profit': float(invoice_agg['total_profit']),
+        'total_invoices': invoice_agg['total_invoices'],
+        'paid_invoices': invoice_agg['paid_invoices'],
         'total_products': total_products,
         'low_stock_products': low_stock,
         'low_stock_count': len(low_stock),

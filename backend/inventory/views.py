@@ -167,15 +167,16 @@ def low_stock_products(request):
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
-    products = Product.objects.filter(
+    from django.db.models import F
+    # DB-level filter — Python loop nahi, F() se DB pe compare
+    low_stock = Product.objects.filter(
         tenant=tenant,
-        is_active=True
+        is_active=True,
+        stock_quantity__lte=F('reorder_point')
     )
-    # Sirf low stock products filter karo
-    low_stock = [p for p in products if p.is_low_stock]
     serializer = ProductSerializer(low_stock, many=True)
     return Response({
-        'count': len(low_stock),
+        'count': low_stock.count(),
         'products': serializer.data
     })
 

@@ -80,3 +80,8 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['tenant', 'role']),
+            models.Index(fields=['is_active']),
+            models.Index(fields=['-created_at']),
+        ]

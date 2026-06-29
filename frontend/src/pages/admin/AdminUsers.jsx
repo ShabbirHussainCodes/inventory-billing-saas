@@ -295,7 +295,8 @@ export default function AdminUsers() {
     setError("")
     try {
       const res = await superAdminAPI.getUsers()
-      setUsers(res.data)
+      // Pagination response — results array lo
+      setUsers(res.data.results || res.data)
     } catch (err) {
       setError(err?.response?.data?.error || "Could not load users.")
     } finally {

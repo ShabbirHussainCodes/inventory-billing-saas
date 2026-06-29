@@ -180,22 +180,23 @@ def invoice_summary(request):
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
-    invoices = Invoice.objects.filter(tenant=tenant)
+    from django.db.models import Sum, Count, Q
+    from django.db.models.functions import Coalesce
+    from decimal import Decimal
 
-    total_revenue = sum(
-        inv.total_amount for inv in invoices
+    # Single DB query — koi Python loop nahi
+    agg = Invoice.objects.filter(tenant=tenant).aggregate(
+        total_revenue=Coalesce(Sum('total_amount'), Decimal('0.00')),
+        total_profit=Coalesce(Sum('total_profit'), Decimal('0.00')),
+        total_invoices=Count('id'),
+        paid_invoices=Count('id', filter=Q(status='paid')),
     )
-    total_profit = sum(
-        inv.total_profit for inv in invoices
-    )
-    total_invoices = invoices.count()
-    paid_invoices = invoices.filter(status='paid').count()
 
     return Response({
-        'total_invoices': total_invoices,
-        'paid_invoices': paid_invoices,
-        'total_revenue': total_revenue,
-        'total_profit': total_profit,
+        'total_invoices': agg['total_invoices'],
+        'paid_invoices': agg['paid_invoices'],
+        'total_revenue': agg['total_revenue'],
+        'total_profit': agg['total_profit'],
         'currency': tenant.currency,
         'tax_label': tenant.tax_label,
     })

@@ -251,7 +251,8 @@ export default function AdminBusinesses() {
     setError("")
     try {
       const res = await superAdminAPI.getTenants()
-      setBusinesses(res.data)
+      // Pagination response — results array lo
+      setBusinesses(res.data.results || res.data)
     } catch (err) {
       setError(err?.response?.data?.error || "Could not load businesses.")
     } finally {
