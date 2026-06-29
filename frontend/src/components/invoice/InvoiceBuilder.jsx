@@ -274,10 +274,11 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
   }
 
   // Build payload — discount baked into effective unit_price
-  const buildPayload = () => ({
+  const buildPayload = (status = 'draft') => ({
     customer: customer.id,
     invoice_date: invoiceDate,
     due_date: dueDate || null,
+    status,             // Set status directly — no separate PATCH needed
     notes: notes.trim(),
     items: items
       .filter(i => i.product)
@@ -298,7 +299,7 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
     if (err) { setError(err); return }
     setSaving('draft'); setError('')
     try {
-      await billingAPI.createInvoice(buildPayload())
+      await billingAPI.createInvoice(buildPayload('draft'))
       onSuccess?.()
     } catch(err) {
       setError(extractError(err, 'Failed to save draft.'))
@@ -310,8 +311,7 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
     if (err) { setError(err); return }
     setSaving('invoice'); setError('')
     try {
-      const res = await billingAPI.createInvoice(buildPayload())
-      await billingAPI.updateInvoiceStatus(res.data.id, 'sent')
+      await billingAPI.createInvoice(buildPayload('sent'))
       onSuccess?.()
     } catch(err) {
       setError(extractError(err, 'Failed to create invoice.'))

@@ -56,6 +56,7 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
             'customer',
             'invoice_date',
             'due_date',
+            'status',   # Allow setting status on creation (draft/sent)
             'notes',
             'items'
         ]
