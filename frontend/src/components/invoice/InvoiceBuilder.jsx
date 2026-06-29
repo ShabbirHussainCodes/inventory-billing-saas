@@ -9,6 +9,34 @@ import InvoiceSummaryCard from "./InvoiceSummaryCard"
 
 const todayISO = () => new Date().toISOString().split('T')[0]
 
+// Extract readable error from any DRF response format
+function extractError(err, fallback) {
+  const d = err?.response?.data
+  if (!d) return fallback
+  // Array of item errors e.g. [{"product_name": ["..."]}]
+  if (Array.isArray(d)) {
+    const msgs = d.map(item =>
+      typeof item === 'object'
+        ? Object.entries(item).map(([k,v]) => `${k}: ${Array.isArray(v)?v.join(', '):v}`).join('; ')
+        : String(item)
+    ).filter(Boolean)
+    return msgs.join(' | ') || fallback
+  }
+  // Object errors
+  if (typeof d === 'object') {
+    if (d.error) return d.error
+    if (d.detail) return d.detail
+    if (d.items) {
+      const itemErr = Array.isArray(d.items) ? d.items[0] : d.items
+      if (typeof itemErr === 'object') return Object.values(itemErr).flat().join(', ')
+      return String(itemErr)
+    }
+    const first = Object.entries(d)[0]
+    if (first) return `${first[0]}: ${Array.isArray(first[1])?first[1].join(', '):first[1]}`
+  }
+  return fallback
+}
+
 // ─── Quick Add Customer Modal ─────────────────────────────────────────────────
 
 function QuickAddCustomerModal({ onClose, onCreated }) {
@@ -273,10 +301,7 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
       await billingAPI.createInvoice(buildPayload())
       onSuccess?.()
     } catch(err) {
-      const d = err?.response?.data
-      setError(d?.items?.[0] && typeof d.items[0] === 'object'
-        ? Object.values(d.items[0]).flat().join(', ')
-        : d?.customer || d?.detail || 'Failed to save draft.')
+      setError(extractError(err, 'Failed to save draft.'))
     } finally { setSaving(null) }
   }
 
@@ -289,10 +314,7 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
       await billingAPI.updateInvoiceStatus(res.data.id, 'sent')
       onSuccess?.()
     } catch(err) {
-      const d = err?.response?.data
-      setError(d?.items?.[0] && typeof d.items[0] === 'object'
-        ? Object.values(d.items[0]).flat().join(', ')
-        : d?.customer || d?.detail || 'Failed to create invoice.')
+      setError(extractError(err, 'Failed to create invoice.'))
     } finally { setSaving(null) }
   }
 
