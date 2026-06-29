@@ -695,25 +695,45 @@ def get_active_session(request):
 @permission_classes([IsAuthenticated])
 def audit_logs(request):
     """
-    Founder ke liye audit logs fetch karo.
-    Optional filter: ?tenant_id=<uuid> — ek specific business ke logs
+    Founder ke liye audit logs — pagination + date range filter ke saath.
+
+    Query params:
+        tenant_id  → specific business ke logs
+        days       → 1 (today), 7, 30 — date range filter
+        page       → page number (default 1)
+        page_size  → entries per page (default 50)
     """
     if not is_super_admin(request.user):
         return Response({'error': 'Access denied.'}, status=403)
 
+    import datetime
     from superadmin.models import AuditLog
 
     logs = AuditLog.objects.select_related('actor', 'tenant').order_by('-created_at')
 
-    # Optional tenant filter
+    # Filter 1: tenant_id
     tenant_id = request.query_params.get('tenant_id')
     if tenant_id:
         logs = logs.filter(tenant_id=tenant_id)
 
-    # Last 200 logs — pagination Phase 4 mein
-    logs = logs[:200]
+    # Filter 2: date range
+    days = request.query_params.get('days')
+    if days:
+        try:
+            days_int = int(days)
+            since = timezone.now() - datetime.timedelta(days=days_int)
+            logs = logs.filter(created_at__gte=since)
+        except ValueError:
+            pass
 
-    # Human-readable action labels
+    # Pagination
+    total_count = logs.count()
+    page = max(1, int(request.query_params.get('page', 1)))
+    page_size = min(100, max(10, int(request.query_params.get('page_size', 50))))
+    start = (page - 1) * page_size
+    end = start + page_size
+    logs_page = logs[start:end]
+
     ACTION_LABELS = {
         'workspace_entered':      'Entered workspace',
         'workspace_exited':       'Exited workspace',
@@ -728,7 +748,7 @@ def audit_logs(request):
     }
 
     data = []
-    for log in logs:
+    for log in logs_page:
         data.append({
             'id': str(log.id),
             'actor_email': log.actor.email,
@@ -743,7 +763,13 @@ def audit_logs(request):
             'created_at': log.created_at.isoformat(),
         })
 
-    return Response(data)
+    return Response({
+        'count': total_count,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': max(1, (total_count + page_size - 1) // page_size),
+        'results': data,
+    })
 
 
 # ── Phase 3 — Platform Analytics ─────────────────────────────────────────────

@@ -74,11 +74,13 @@ export const superAdminAPI = {
   getAnalytics: () => api.get('/superadmin/analytics/'),
 
   // ── Audit Log ──
-  getAuditLogs: (tenantId = null) => {
-    const url = tenantId
-      ? `/superadmin/audit-logs/?tenant_id=${tenantId}`
-      : '/superadmin/audit-logs/'
-    return api.get(url)
+  getAuditLogs: ({ tenantId = null, days = null, page = 1, pageSize = 50 } = {}) => {
+    const params = new URLSearchParams()
+    if (tenantId) params.append('tenant_id', tenantId)
+    if (days) params.append('days', days)
+    params.append('page', page)
+    params.append('page_size', pageSize)
+    return api.get(`/superadmin/audit-logs/?${params.toString()}`)
   },
 }
 
