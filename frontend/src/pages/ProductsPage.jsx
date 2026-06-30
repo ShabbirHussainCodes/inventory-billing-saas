@@ -2,262 +2,325 @@ import { useState, useEffect } from "react"
 import Layout from "../components/Layout"
 import { inventoryAPI } from "../services/api"
 
+// ─── Product Modal (Add + Edit) ───────────────────────────────────────────────
+
+function ProductModal({ product, onClose, onSave, saving }) {
+  const [form, setForm] = useState({
+    name: product?.name || "",
+    sku: product?.sku || "",
+    cost_price: product?.cost_price || "",
+    selling_price: product?.selling_price || "",
+    stock_quantity: product?.stock_quantity ?? 0,
+    reorder_point: product?.reorder_point ?? 10,
+    tax_rate: product?.tax_rate ?? 0,
+  })
+  const [err, setErr] = useState("")
+
+  const handle = e => { setForm(p => ({ ...p, [e.target.name]: e.target.value })); setErr("") }
+
+  const submit = () => {
+    if (!form.name || !form.sku || !form.cost_price || !form.selling_price) {
+      setErr("Name, SKU, Cost Price and Selling Price are required.")
+      return
+    }
+    onSave(form)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <p className="text-base font-semibold text-gray-900">
+            {product ? "Edit Product" : "Add Product"}
+          </p>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg">×</button>
+        </div>
+
+        <div className="px-6 py-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Product Name *</label>
+              <input name="name" value={form.name} onChange={handle}
+                placeholder="e.g. Rice 1kg"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">SKU *</label>
+              <input name="sku" value={form.sku} onChange={handle}
+                placeholder="RICE-001"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Cost Price *</label>
+              <input name="cost_price" type="number" step="0.01" value={form.cost_price} onChange={handle}
+                placeholder="0.00"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Selling Price *</label>
+              <input name="selling_price" type="number" step="0.01" value={form.selling_price} onChange={handle}
+                placeholder="0.00"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Stock Qty</label>
+              <input name="stock_quantity" type="number" value={form.stock_quantity} onChange={handle}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Reorder At</label>
+              <input name="reorder_point" type="number" value={form.reorder_point} onChange={handle}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Tax Rate %</label>
+              <input name="tax_rate" type="number" step="0.01" value={form.tax_rate} onChange={handle}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+            </div>
+          </div>
+          {err && <p className="text-xs text-red-500">{err}</p>}
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+          <button onClick={onClose} disabled={saving}
+            className="rounded-lg border border-gray-200 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={submit} disabled={saving}
+            className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+            {saving ? "Saving…" : product ? "Save Changes" : "Add Product"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Delete Confirm ────────────────────────────────────────────────────────────
+
+function DeleteConfirm({ product, onConfirm, onCancel, loading }) {
+  if (!product) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+        <p className="text-base font-semibold text-gray-900">Delete product?</p>
+        <p className="mt-1.5 text-sm text-gray-500">
+          "<strong className="text-gray-800">{product.name}</strong>" will be permanently removed from inventory.
+        </p>
+        <div className="mt-5 flex justify-end gap-3">
+          <button onClick={onCancel} disabled={loading}
+            className="rounded-lg border border-gray-200 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={loading}
+            className="rounded-lg bg-red-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50">
+            {loading ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+function Toast({ message }) {
+  if (!message) return null
+  return (
+    <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm text-white shadow-lg">
+      {message}
+    </div>
+  )
+}
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function Skeleton() {
+  return (
+    <div className="animate-pulse space-y-2">
+      {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-14 rounded-xl bg-gray-100" />)}
+    </div>
+  )
+}
+
+// ─── Main ProductsPage ─────────────────────────────────────────────────────────
+
 export default function ProductsPage() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [formData, setFormData] = useState({
-    name: "", sku: "", cost_price: "",
-    selling_price: "", stock_quantity: "",
-    reorder_point: "10", tax_rate: "0", hsn_code: ""
-  })
+  const [search, setSearch] = useState("")
+  const [addModal, setAddModal] = useState(false)
+  const [editModal, setEditModal] = useState(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState("")
-
-  useEffect(() => { fetchProducts() }, [])
+  const [toast, setToast] = useState("")
 
   const fetchProducts = async () => {
+    setLoading(true)
     try {
       const res = await inventoryAPI.getProducts()
       setProducts(res.data)
     } catch (err) {
-      console.error("Error:", err)
+      console.error(err)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value })
-  }
+  useEffect(() => { fetchProducts() }, [])
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const showToast = msg => { setToast(msg); setTimeout(() => setToast(""), 3000) }
+
+  const handleAdd = async (form) => {
     setSaving(true)
-    setError("")
     try {
-      await inventoryAPI.addProduct(formData)
-      setShowForm(false)
-      setFormData({
-        name: "", sku: "", cost_price: "",
-        selling_price: "", stock_quantity: "",
-        reorder_point: "10", tax_rate: "0", hsn_code: ""
-      })
+      await inventoryAPI.addProduct(form)
+      showToast("Product added ✓")
       fetchProducts()
-    } catch (err) {
-      setError("Failed to add product. Please check all fields.")
-    } finally {
-      setSaving(false)
-    }
+      setAddModal(false)
+    } catch {
+      showToast("Failed to add product.")
+    } finally { setSaving(false) }
   }
 
-  if (loading) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-64">
-          <p className="text-gray-500">Loading products...</p>
-        </div>
-      </Layout>
-    )
+  const handleEdit = async (form) => {
+    setSaving(true)
+    try {
+      await inventoryAPI.updateProduct(editModal.id, form)
+      showToast("Product updated ✓")
+      fetchProducts()
+      setEditModal(null)
+    } catch {
+      showToast("Failed to update product.")
+    } finally { setSaving(false) }
   }
+
+  const handleDelete = async () => {
+    setSaving(true)
+    try {
+      await inventoryAPI.deleteProduct(deleteConfirm.id)
+      showToast("Product deleted ✓")
+      fetchProducts()
+      setDeleteConfirm(null)
+    } catch {
+      showToast("Failed to delete product.")
+    } finally { setSaving(false) }
+  }
+
+  const filtered = products.filter(p => {
+    const q = search.toLowerCase()
+    return !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+  })
+
+  const lowStockCount = products.filter(p => p.is_low_stock).length
 
   return (
     <Layout>
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Products</h2>
-          <p className="text-gray-500 mt-1">Manage your inventory</p>
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <div className="flex-1">
+          <h2 className="text-base font-semibold text-gray-900">Products</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {products.length} products
+            {lowStockCount > 0 && <> · <span className="text-amber-600">{lowStockCount} low stock</span></>}
+          </p>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
-        >
-          {showForm ? "Cancel" : "+ Add Product"}
+        <button onClick={() => setAddModal(true)}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition">
+          + Add Product
         </button>
       </div>
 
-      {/* Add Product Form */}
-      {showForm && (
-        <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">
-            Add New Product
-          </h3>
-          {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm">
-              {error}
-            </div>
-          )}
-          <form onSubmit={handleSubmit}>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Product Name *
-                </label>
-                <input
-                  type="text" name="name"
-                  value={formData.name} onChange={handleChange}
-                  placeholder="Samsung TV 43"
-                  required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  SKU *
-                </label>
-                <input
-                  type="text" name="sku"
-                  value={formData.sku} onChange={handleChange}
-                  placeholder="SAM-TV-43"
-                  required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Cost Price *
-                </label>
-                <input
-                  type="number" name="cost_price"
-                  value={formData.cost_price} onChange={handleChange}
-                  placeholder="800"
-                  required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Selling Price *
-                </label>
-                <input
-                  type="number" name="selling_price"
-                  value={formData.selling_price} onChange={handleChange}
-                  placeholder="1000"
-                  required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Stock Quantity *
-                </label>
-                <input
-                  type="number" name="stock_quantity"
-                  value={formData.stock_quantity} onChange={handleChange}
-                  placeholder="50"
-                  required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Reorder Point
-                </label>
-                <input
-                  type="number" name="reorder_point"
-                  value={formData.reorder_point} onChange={handleChange}
-                  placeholder="10"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tax Rate (%)
-                </label>
-                <input
-                  type="number" name="tax_rate"
-                  value={formData.tax_rate} onChange={handleChange}
-                  placeholder="18"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  HSN Code
-                </label>
-                <input
-                  type="text" name="hsn_code"
-                  value={formData.hsn_code} onChange={handleChange}
-                  placeholder="8528"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-            <div className="mt-4 flex gap-3">
-              <button
-                type="submit" disabled={saving}
-                className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50"
-              >
-                {saving ? "Saving..." : "Save Product"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="border border-gray-300 text-gray-600 px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      {/* Search */}
+      <div className="mb-4 relative max-w-sm">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+          strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+        </svg>
+        <input type="text" placeholder="Search products…" value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+      </div>
 
-      {/* Products Table */}
-      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="text-left px-6 py-4 text-sm font-medium text-gray-500">Product</th>
-              <th className="text-left px-6 py-4 text-sm font-medium text-gray-500">SKU</th>
-              <th className="text-left px-6 py-4 text-sm font-medium text-gray-500">Cost</th>
-              <th className="text-left px-6 py-4 text-sm font-medium text-gray-500">Sell</th>
-              <th className="text-left px-6 py-4 text-sm font-medium text-gray-500">Margin</th>
-              <th className="text-left px-6 py-4 text-sm font-medium text-gray-500">Stock</th>
-              <th className="text-left px-6 py-4 text-sm font-medium text-gray-500">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {products.length === 0 ? (
-              <tr>
-                <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
-                  No products yet. Add your first product!
-                </td>
+      {/* Table */}
+      {loading ? (
+        <Skeleton />
+      ) : (
+        <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-xs text-gray-400">
+                <th className="px-4 py-3 text-left font-medium">Product</th>
+                <th className="px-4 py-3 text-left font-medium">SKU</th>
+                <th className="px-4 py-3 text-left font-medium">Cost</th>
+                <th className="px-4 py-3 text-left font-medium">Selling</th>
+                <th className="px-4 py-3 text-left font-medium">Margin</th>
+                <th className="px-4 py-3 text-left font-medium">Stock</th>
+                <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
-            ) : (
-              products.map((product) => (
-                <tr key={product.id} className="hover:bg-gray-50 transition">
-                  <td className="px-6 py-4">
-                    <p className="font-medium text-gray-800">{product.name}</p>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{product.sku}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{product.cost_price}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{product.selling_price}</td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm font-medium text-green-600">
-                      {product.profit_margin}%
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    {product.stock_quantity}
-                  </td>
-                  <td className="px-6 py-4">
-                    {product.is_low_stock ? (
-                      <span className="px-2 py-1 bg-red-100 text-red-600 rounded-full text-xs font-medium">
-                        Low Stock 🔴
-                      </span>
-                    ) : (
-                      <span className="px-2 py-1 bg-green-100 text-green-600 rounded-full text-xs font-medium">
-                        In Stock ✅
-                      </span>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-16 text-center">
+                    <p className="text-sm font-medium text-gray-900 mb-1">
+                      {search ? "No products match your search" : "No products yet"}
+                    </p>
+                    {!search && (
+                      <button onClick={() => setAddModal(true)} className="mt-2 text-sm text-blue-600 hover:underline">
+                        Add your first product →
+                      </button>
                     )}
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                filtered.map(p => (
+                  <tr key={p.id} className="hover:bg-gray-50/60 transition">
+                    <td className="px-4 py-3.5">
+                      <p className="font-medium text-gray-900">{p.name}</p>
+                      {p.is_low_stock && <p className="text-[11px] text-amber-600 mt-0.5">⚠ Low stock</p>}
+                    </td>
+                    <td className="px-4 py-3.5 font-mono text-xs text-gray-500">{p.sku}</td>
+                    <td className="px-4 py-3.5 text-gray-700">{p.cost_price}</td>
+                    <td className="px-4 py-3.5 text-gray-700">{p.selling_price}</td>
+                    <td className="px-4 py-3.5">
+                      <span className="text-green-600 font-medium">{p.profit_margin}%</span>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <span className={`font-medium ${p.is_low_stock ? "text-amber-600" : "text-gray-800"}`}>
+                        {p.stock_quantity}
+                      </span>
+                      <span className="text-xs text-gray-400 ml-1">/ {p.reorder_point}</span>
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => setEditModal(p)}
+                          className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 transition">
+                          Edit
+                        </button>
+                        <button onClick={() => setDeleteConfirm(p)}
+                          className="rounded-lg border border-red-100 px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 transition">
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {addModal && <ProductModal onClose={() => setAddModal(false)} onSave={handleAdd} saving={saving} />}
+      {editModal && <ProductModal product={editModal} onClose={() => setEditModal(null)} onSave={handleEdit} saving={saving} />}
+      <DeleteConfirm product={deleteConfirm} onConfirm={handleDelete} onCancel={() => setDeleteConfirm(null)} loading={saving} />
+      <Toast message={toast} />
     </Layout>
   )
 }
