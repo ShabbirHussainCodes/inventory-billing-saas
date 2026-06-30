@@ -47,59 +47,6 @@ export default function InvoiceDetailPage() {
   const [invoice, setInvoice] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [generating, setGenerating] = useState(false)
-  const printRef = useRef(null)
-
-  // Download invoice as PDF — captures the print-area as an image, embeds in A4 PDF
-  const handleDownloadPDF = async () => {
-    if (!printRef.current) return
-    setGenerating(true)
-    try {
-      // Lazy load — sirf PDF download click hone par yeh libraries load hon,
-      // har invoice page load pe nahi (bundle size optimize)
-      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-        import('jspdf'),
-        import('html2canvas-pro'),
-      ])
-
-      // React state update ke baad DOM re-render hone ka wait karo —
-      // warna status badge/profit box capture mein reh jaayenge
-      await new Promise(resolve => setTimeout(resolve, 100))
-
-      const canvas = await html2canvas(printRef.current, {
-        scale: 2,           // sharper output
-        useCORS: true,
-        backgroundColor: '#ffffff',
-      })
-      const imgData = canvas.toDataURL('image/png')
-
-      const pdf = new jsPDF('p', 'mm', 'a4')
-      const pageWidth = pdf.internal.pageSize.getWidth()
-      const pageHeight = pdf.internal.pageSize.getHeight()
-      const imgWidth = pageWidth
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-
-      // Agar content ek page se lamba hai, multi-page PDF banao
-      let heightLeft = imgHeight
-      let position = 0
-
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pageHeight
-
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight
-        pdf.addPage()
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-        heightLeft -= pageHeight
-      }
-
-      pdf.save(`${invoice.invoice_number}.pdf`)
-    } catch (err) {
-      console.error('PDF generation failed:', err)
-    } finally {
-      setGenerating(false)
-    }
-  }
 
   // Share invoice summary on WhatsApp — no paid API, uses wa.me link
   const handleWhatsAppShare = () => {
