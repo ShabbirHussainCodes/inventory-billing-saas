@@ -94,9 +94,26 @@ def product_list(request):
         return Response(serializer.data)
 
     elif request.method == 'POST':
+        # SKU duplicate check — explicit, kyunki 'tenant' field serializer mein
+        # nahi hai isliye DRF automatically unique_together validate nahi kar
+        # sakta. Iske bina IntegrityError crash hota tha (500 error).
+        sku = (request.data.get('sku') or '').strip()
+        if sku and Product.objects.filter(tenant=tenant, sku=sku).exists():
+            return Response(
+                {'sku': [f'A product with SKU "{sku}" already exists.']},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         serializer = ProductSerializer(data=request.data)
         if serializer.is_valid():
-            product = serializer.save(tenant=tenant)
+            try:
+                product = serializer.save(tenant=tenant)
+            except Exception:
+                # Safety net — koi bhi DB constraint clash crash na kare
+                return Response(
+                    {'error': 'Could not create product. SKU may already be in use.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             from superadmin.audit import log_action
             log_action(request, 'product_created', tenant=tenant,
                        target_type='product', target_name=product.name,
@@ -131,13 +148,29 @@ def product_detail(request, pk):
         return Response(serializer.data)
 
     elif request.method == 'PUT':
+        # SKU duplicate check — agar SKU badla ho to verify karo koi aur
+        # product (isi tenant mein) wahi SKU use na kar raha ho
+        new_sku = (request.data.get('sku') or '').strip()
+        if new_sku and new_sku != product.sku:
+            if Product.objects.filter(tenant=tenant, sku=new_sku).exclude(pk=product.pk).exists():
+                return Response(
+                    {'sku': [f'A product with SKU "{new_sku}" already exists.']},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         serializer = ProductSerializer(
             product,
             data=request.data,
             partial=True
         )
         if serializer.is_valid():
-            serializer.save()
+            try:
+                serializer.save()
+            except Exception:
+                return Response(
+                    {'error': 'Could not update product. SKU may already be in use.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             from superadmin.audit import log_action
             log_action(request, 'product_updated', tenant=tenant,
                        target_type='product', target_name=product.name)
