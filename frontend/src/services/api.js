@@ -13,6 +13,83 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// Response interceptor — access token expire (15 min) ho jaaye toh
+// silently refresh karke original request retry karo. User ko pata
+// hi nahi chalega. Sirf jab refresh token bhi expired/invalid ho
+// (7 din baad, ya logout ke baad blacklist), tab login pe bhejo.
+let isRefreshing = false
+let pendingQueue = []
+
+const processQueue = (error, token = null) => {
+  pendingQueue.forEach(({ resolve, reject }) => {
+    if (error) reject(error)
+    else resolve(token)
+  })
+  pendingQueue = []
+}
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config
+
+    // 401 hi handle karo, aur sirf ek baar retry karo (infinite loop se bachao)
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      const refreshToken = localStorage.getItem('refresh_token')
+
+      // Refresh token hi nahi hai — login pe bhejo
+      if (!refreshToken) {
+        localStorage.clear()
+        window.location.href = '/'
+        return Promise.reject(error)
+      }
+
+      if (isRefreshing) {
+        // Ek refresh already chal raha hai — naya request queue mein daal do
+        return new Promise((resolve, reject) => {
+          pendingQueue.push({ resolve, reject })
+        }).then((token) => {
+          originalRequest.headers.Authorization = `Bearer ${token}`
+          return api(originalRequest)
+        })
+      }
+
+      originalRequest._retry = true
+      isRefreshing = true
+
+      try {
+        const res = await axios.post(`${BASE_URL}/auth/token/refresh/`, {
+          refresh: refreshToken,
+        })
+        const newAccessToken = res.data.access
+        localStorage.setItem('access_token', newAccessToken)
+
+        // ROTATE_REFRESH_TOKENS: True hai backend mein — naya refresh token
+        // bhi aata hai response mein, usko bhi save karna zaroori hai,
+        // warna purana token blacklist ho chuka hoga aur agla refresh fail hoga
+        if (res.data.refresh) {
+          localStorage.setItem('refresh_token', res.data.refresh)
+        }
+
+        processQueue(null, newAccessToken)
+        isRefreshing = false
+
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
+        return api(originalRequest)
+      } catch (refreshError) {
+        // Refresh token bhi expired/invalid — ab login pe bhejna padega
+        processQueue(refreshError, null)
+        isRefreshing = false
+        localStorage.clear()
+        window.location.href = '/'
+        return Promise.reject(refreshError)
+      }
+    }
+
+    return Promise.reject(error)
+  }
+)
+
 export const authAPI = {
   login: (data) => api.post('/auth/login/', data),
   register: (data) => api.post('/auth/register/', data),
@@ -37,7 +114,6 @@ export const inventoryAPI = {
     params.append('page_size', pageSize)
     return api.get(`/inventory/stock-movements/?${params.toString()}`)
   },
-  addStockMovement: (data) => api.post('/inventory/stock-movement/', data),
   addStockMovement: (data) => api.post('/inventory/stock-movement/', data),
   getCategories: () => api.get('/inventory/categories/'),
   addCategory: (data) => api.post('/inventory/categories/', data),
