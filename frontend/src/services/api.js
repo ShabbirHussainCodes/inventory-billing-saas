@@ -44,6 +44,7 @@ export const billingAPI = {
   updateInvoiceStatus: (id, status) => api.patch(`/billing/invoices/${id}/status/`, { status }),
   getInvoiceDetail: (id) => api.get(`/billing/invoices/${id}/`),
   updateInvoice: (id, data) => api.put(`/billing/invoices/${id}/`, data),
+  deleteInvoice: (id) => api.delete(`/billing/invoices/${id}/`),
 }
 
 export const superAdminAPI = {

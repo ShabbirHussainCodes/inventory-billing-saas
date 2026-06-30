@@ -127,7 +127,7 @@ def invoice_list(request):
         )
 
 
-@api_view(['GET', 'PUT'])
+@api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def invoice_detail(request, pk):
     tenant = get_active_tenant(request)
@@ -145,6 +145,36 @@ def invoice_detail(request, pk):
     if request.method == 'GET':
         serializer = InvoiceSerializer(invoice)
         return Response(serializer.data)
+
+    elif request.method == 'DELETE':
+        # Sirf draft invoices delete ho sakte hain — sent/paid pe history
+        # preserve karni hai (accounting integrity)
+        if invoice.status != 'draft':
+            return Response(
+                {'error': 'Only draft invoices can be deleted.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from django.db import transaction
+        from django.db.models import F
+        from inventory.models import Product
+
+        with transaction.atomic():
+            # Stock wapas restore karo before delete
+            for item in invoice.items.all():
+                if item.product_id:
+                    Product.objects.filter(pk=item.product_id).update(
+                        stock_quantity=F('stock_quantity') + item.quantity
+                    )
+            invoice_number = invoice.invoice_number
+            invoice.delete()
+
+        from superadmin.audit import log_action
+        log_action(request, 'invoice_status_changed', tenant=tenant,
+                   target_type='invoice', target_name=invoice_number,
+                   details={'action': 'deleted'})
+
+        return Response({'message': 'Draft invoice deleted.'}, status=status.HTTP_200_OK)
 
     elif request.method == 'PUT':
         # Sirf draft invoices edit ho sakte hain — business rule

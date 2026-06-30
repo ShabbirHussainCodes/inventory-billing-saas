@@ -44,19 +44,72 @@ function InvoicesSkeleton() {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+function DeleteConfirm({ invoice, onConfirm, onCancel, loading }) {
+  if (!invoice) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+        <p className="text-base font-semibold text-gray-900">Delete draft invoice?</p>
+        <p className="mt-1.5 text-sm text-gray-500">
+          "<strong className="text-gray-800">{invoice.invoice_number}</strong>" will be
+          permanently deleted and its stock will be restored.
+        </p>
+        <div className="mt-5 flex justify-end gap-3">
+          <button onClick={onCancel} disabled={loading}
+            className="rounded-lg border border-gray-200 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={loading}
+            className="rounded-lg bg-red-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50">
+            {loading ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Toast({ message }) {
+  if (!message) return null
+  return (
+    <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm text-white shadow-lg">
+      {message}
+    </div>
+  )
+}
+
 export default function InvoicesPage() {
   const navigate = useNavigate()
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  const [toast, setToast] = useState("")
 
-  useEffect(() => {
+  const fetchInvoices = () => {
     billingAPI.getInvoices()
       .then((res) => setInvoices(res.data))
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { fetchInvoices() }, [])
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000) }
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      await billingAPI.deleteInvoice(deleteConfirm.id)
+      showToast("Draft deleted, stock restored ✓")
+      fetchInvoices()
+      setDeleteConfirm(null)
+    } catch {
+      showToast("Failed to delete invoice.")
+    } finally { setDeleting(false) }
+  }
 
   // Client-side filter
   const filtered = invoices.filter((inv) => {
@@ -181,12 +234,20 @@ export default function InvoicesPage() {
                     </td>
                     <td className="px-4 py-3.5 text-right">
                       {inv.status === 'draft' ? (
-                        <button
-                          onClick={() => navigate(`/invoices/edit/${inv.id}`)}
-                          className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 transition"
-                        >
-                          Edit
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => navigate(`/invoices/edit/${inv.id}`)}
+                            className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 transition"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(inv)}
+                            className="rounded-lg border border-red-100 px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 transition"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       ) : (
                         <span className="text-xs text-gray-300">—</span>
                       )}
@@ -198,6 +259,13 @@ export default function InvoicesPage() {
           </table>
         </div>
       )}
+      <DeleteConfirm
+        invoice={deleteConfirm}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteConfirm(null)}
+        loading={deleting}
+      />
+      <Toast message={toast} />
     </Layout>
   )
 }

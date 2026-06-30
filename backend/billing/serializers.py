@@ -266,6 +266,7 @@ class InvoiceEditSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         from django.db import transaction
+        from django.db.models import F
         from inventory.models import StockMovement
 
         tenant = self.context['tenant']
@@ -273,15 +274,17 @@ class InvoiceEditSerializer(serializers.ModelSerializer):
         items_data = validated_data.pop('items')
 
         with transaction.atomic():
-            # Step 1 — Purane items ka stock wapas add karo, phir delete karo
-            old_items = list(instance.items.select_related('product').all())
+            # Step 1 — Purane items ka stock wapas add karo (F() = DB-level,
+            # stale Python object issue se bachata hai), phir items delete karo
+            old_items = list(instance.items.all())
             for old_item in old_items:
-                if old_item.product:
-                    old_item.product.stock_quantity += old_item.quantity
-                    old_item.product.save()
+                if old_item.product_id:
+                    Product.objects.filter(pk=old_item.product_id).update(
+                        stock_quantity=F('stock_quantity') + old_item.quantity
+                    )
                     StockMovement.objects.create(
                         tenant=tenant,
-                        product=old_item.product,
+                        product_id=old_item.product_id,
                         movement_type='in',
                         quantity=old_item.quantity,
                         note='Invoice edited — stock restored',
@@ -293,7 +296,8 @@ class InvoiceEditSerializer(serializers.ModelSerializer):
             for attr, value in validated_data.items():
                 setattr(instance, attr, value)
 
-            # Step 3 — Naye items banao, stock minus karo, totals calculate karo
+            # Step 3 — Naye items banao, stock minus karo (F() expression se —
+            # restoration ke baad ka FRESH value use hota hai, stale nahi)
             subtotal = 0
             tax_amount = 0
             total_profit = 0
@@ -302,12 +306,18 @@ class InvoiceEditSerializer(serializers.ModelSerializer):
                 product = item_data.get('product')
 
                 if product:
+                    # CRITICAL FIX: product object request shuru hone pe load
+                    # hua tha — restoration ke baad uska stock stale ho chuka
+                    # hai. Fresh value DB se dobara lo before deducting.
+                    product.refresh_from_db()
+
                     item_data['product_name'] = product.name
                     item_data['cost_price'] = product.cost_price
                     item_data['tax_rate'] = product.tax_rate
 
-                    product.stock_quantity -= item_data['quantity']
-                    product.save()
+                    Product.objects.filter(pk=product.id).update(
+                        stock_quantity=F('stock_quantity') - item_data['quantity']
+                    )
 
                     StockMovement.objects.create(
                         tenant=tenant,
