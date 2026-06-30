@@ -100,6 +100,7 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        from django.db import transaction
         from .utils import generate_invoice_number
 
         # Items alag nikalo
@@ -107,63 +108,62 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         tenant = self.context['tenant']
         user = self.context['user']
 
-        # Currency aur tax_label tenant se lo
-        invoice = Invoice.objects.create(
-            tenant=tenant,
-            created_by=user,
-            invoice_number=generate_invoice_number(tenant),
-            currency=tenant.currency,
-            tax_label=tenant.tax_label,
-            **validated_data
-        )
-
-        # Items banao aur totals calculate karo
-        subtotal = 0
-        tax_amount = 0
-        total_profit = 0
-
-        for item_data in items_data:
-            product = item_data.get('product')
-
-            # Product ki info automatically lo
-            if product:
-                item_data['product_name'] = product.name
-                item_data['cost_price'] = product.cost_price
-                item_data['tax_rate'] = product.tax_rate
-
-                # Fix 5 already validate() mein check ho gaya
-                # Stock update karo
-                product.stock_quantity -= item_data['quantity']
-                product.save()
-
-                # Fix 6: StockMovement record banao — history + AI ke liye zaroori
-                from inventory.models import StockMovement
-                StockMovement.objects.create(
-                    tenant=tenant,
-                    product=product,
-                    movement_type='out',
-                    quantity=item_data['quantity'],
-                    notes=f'Invoice sale',
-                    user=user,
-                )
-
-            invoice_item = InvoiceItem.objects.create(
-                invoice=invoice,
-                **item_data
+        # transaction.atomic() — agar koi step fail ho to SAB rollback ho
+        # Pehle bug yahi tha: StockMovement crash hota tha lekin Invoice
+        # already create ho chuka hota tha (partial data, totals=0)
+        with transaction.atomic():
+            invoice = Invoice.objects.create(
+                tenant=tenant,
+                created_by=user,
+                invoice_number=generate_invoice_number(tenant),
+                currency=tenant.currency,
+                tax_label=tenant.tax_label,
+                **validated_data
             )
 
-            subtotal += invoice_item.subtotal
-            tax_amount += invoice_item.tax_amount
-            total_profit += invoice_item.profit
+            subtotal = 0
+            tax_amount = 0
+            total_profit = 0
 
-        # Invoice totals update karo
-        invoice.subtotal = subtotal
-        invoice.tax_amount = tax_amount
-        invoice.total_amount = subtotal + tax_amount
-        invoice.total_profit = total_profit
-        # Status nahi set karo — model ka default 'draft' use hoga
-        # Frontend PATCH call karega agar 'sent' chahiye
-        invoice.save()
+            for item_data in items_data:
+                product = item_data.get('product')
+
+                if product:
+                    item_data['product_name'] = product.name
+                    item_data['cost_price'] = product.cost_price
+                    item_data['tax_rate'] = product.tax_rate
+
+                    # Stock update karo
+                    product.stock_quantity -= item_data['quantity']
+                    product.save()
+
+                    # StockMovement record — history + AI ke liye
+                    # FIX: model field 'note' hai (singular), 'notes' nahi
+                    from inventory.models import StockMovement
+                    StockMovement.objects.create(
+                        tenant=tenant,
+                        product=product,
+                        movement_type='out',
+                        quantity=item_data['quantity'],
+                        note='Invoice sale',
+                        user=user,
+                    )
+
+                invoice_item = InvoiceItem.objects.create(
+                    invoice=invoice,
+                    **item_data
+                )
+
+                subtotal += invoice_item.subtotal
+                tax_amount += invoice_item.tax_amount
+                total_profit += invoice_item.profit
+
+            # Invoice totals update karo
+            invoice.subtotal = subtotal
+            invoice.tax_amount = tax_amount
+            invoice.total_amount = subtotal + tax_amount
+            invoice.total_profit = total_profit
+            invoice.save()
 
         return invoice
 
