@@ -75,6 +75,15 @@ export default function InvoiceDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
+  // Page title ko invoice number set karo — Print/Save PDF dialog mein
+  // file ka suggested naam yahi se aata hai (generic "frontend" ki jagah)
+  useEffect(() => {
+    if (invoice?.invoice_number) {
+      document.title = invoice.invoice_number
+    }
+    return () => { document.title = 'BillingMars' }
+  }, [invoice])
+
   if (loading) return <Layout><Skeleton /></Layout>
 
   if (error || !invoice) {
