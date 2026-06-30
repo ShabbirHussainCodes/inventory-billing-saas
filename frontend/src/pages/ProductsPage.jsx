@@ -5,10 +5,13 @@ import { inventoryAPI } from "../services/api"
 
 // ─── Product Modal (Add + Edit) ───────────────────────────────────────────────
 
-function ProductModal({ product, onClose, onSave, saving }) {
+function ProductModal({ product, categories, suppliers, onClose, onSave, saving }) {
   const [form, setForm] = useState({
     name: product?.name || "",
     sku: product?.sku || "",
+    barcode: product?.barcode || "",
+    category: product?.category || "",
+    supplier: product?.supplier || "",
     cost_price: product?.cost_price || "",
     selling_price: product?.selling_price || "",
     stock_quantity: product?.stock_quantity ?? 0,
@@ -24,7 +27,12 @@ function ProductModal({ product, onClose, onSave, saving }) {
       setErr("Name, SKU, Cost Price and Selling Price are required.")
       return
     }
-    onSave(form)
+    // Empty dropdown selection ko null bhejo, empty string nahi
+    onSave({
+      ...form,
+      category: form.category || null,
+      supplier: form.supplier || null,
+    })
   }
 
   return (
@@ -52,6 +60,33 @@ function ProductModal({ product, onClose, onSave, saving }) {
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
             </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Category</label>
+              <select name="category" value={form.category} onChange={handle}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 bg-white">
+                <option value="">No category</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Supplier</label>
+              <select name="supplier" value={form.supplier} onChange={handle}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 bg-white">
+                <option value="">No supplier</option>
+                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Barcode (optional)</label>
+            <input name="barcode" value={form.barcode} onChange={handle}
+              placeholder="Scan or type barcode"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-gray-500 mb-1">Cost Price *</label>
@@ -153,6 +188,8 @@ function Skeleton() {
 export default function ProductsPage() {
   const navigate = useNavigate()
   const [products, setProducts] = useState([])
+  const [categories, setCategories] = useState([])
+  const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [addModal, setAddModal] = useState(false)
@@ -173,7 +210,11 @@ export default function ProductsPage() {
     }
   }
 
-  useEffect(() => { fetchProducts() }, [])
+  useEffect(() => {
+    fetchProducts()
+    inventoryAPI.getCategories().then(res => setCategories(res.data)).catch(console.error)
+    inventoryAPI.getSuppliers().then(res => setSuppliers(res.data)).catch(console.error)
+  }, [])
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(""), 3000) }
 
@@ -262,6 +303,7 @@ export default function ProductsPage() {
             <thead>
               <tr className="border-b border-gray-100 text-xs text-gray-400">
                 <th className="px-4 py-3 text-left font-medium">Product</th>
+                <th className="px-4 py-3 text-left font-medium">Category</th>
                 <th className="px-4 py-3 text-left font-medium">SKU</th>
                 <th className="px-4 py-3 text-left font-medium">Cost</th>
                 <th className="px-4 py-3 text-left font-medium">Selling</th>
@@ -273,7 +315,7 @@ export default function ProductsPage() {
             <tbody className="divide-y divide-gray-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center">
+                  <td colSpan={8} className="py-16 text-center">
                     <p className="text-sm font-medium text-gray-900 mb-1">
                       {search ? "No products match your search" : "No products yet"}
                     </p>
@@ -290,6 +332,9 @@ export default function ProductsPage() {
                     <td className="px-4 py-3.5">
                       <p className="font-medium text-gray-900">{p.name}</p>
                       {p.is_low_stock && <p className="text-[11px] text-amber-600 mt-0.5">⚠ Low stock</p>}
+                    </td>
+                    <td className="px-4 py-3.5 text-xs text-gray-500">
+                      {p.category_name || <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-4 py-3.5 font-mono text-xs text-gray-500">{p.sku}</td>
                     <td className="px-4 py-3.5 text-gray-700">{p.cost_price}</td>
@@ -323,8 +368,8 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {addModal && <ProductModal onClose={() => setAddModal(false)} onSave={handleAdd} saving={saving} />}
-      {editModal && <ProductModal product={editModal} onClose={() => setEditModal(null)} onSave={handleEdit} saving={saving} />}
+      {addModal && <ProductModal categories={categories} suppliers={suppliers} onClose={() => setAddModal(false)} onSave={handleAdd} saving={saving} />}
+      {editModal && <ProductModal product={editModal} categories={categories} suppliers={suppliers} onClose={() => setEditModal(null)} onSave={handleEdit} saving={saving} />}
       <DeleteConfirm product={deleteConfirm} onConfirm={handleDelete} onCancel={() => setDeleteConfirm(null)} loading={saving} />
       <Toast message={toast} />
     </Layout>
