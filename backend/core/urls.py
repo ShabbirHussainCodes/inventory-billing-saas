@@ -16,4 +16,7 @@ urlpatterns = [
 
     # Super Admin APIs
     path('api/superadmin/', include('superadmin.urls')),
+
+    # Tenant Settings (business contact info)
+    path('api/tenant/', include('tenants.urls')),
 ]

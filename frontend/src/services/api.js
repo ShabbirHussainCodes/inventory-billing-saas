@@ -47,6 +47,11 @@ export const billingAPI = {
   deleteInvoice: (id) => api.delete(`/billing/invoices/${id}/`),
 }
 
+export const tenantAPI = {
+  getSettings: () => api.get('/tenant/settings/'),
+  updateSettings: (data) => api.put('/tenant/settings/', data),
+}
+
 export const superAdminAPI = {
   // Overview
   getStats: () => api.get('/superadmin/stats/'),

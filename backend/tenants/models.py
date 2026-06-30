@@ -38,6 +38,14 @@ class Tenant(models.Model):
     )
     is_active = models.BooleanField(default=True)
 
+    # --- Business Contact Info (invoice pe dikhega) ---
+    # Yeh sab optional hain — business owner Settings se bhar sakta hai
+    gst_number = models.CharField(max_length=50, blank=True, default='')
+    business_phone = models.CharField(max_length=30, blank=True, default='')
+    business_email = models.EmailField(blank=True, default='')
+    business_address = models.TextField(blank=True, default='')
+    business_website = models.CharField(max_length=255, blank=True, default='')
+
     # --- Timestamps ---
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

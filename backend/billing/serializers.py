@@ -175,6 +175,20 @@ class InvoiceSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    # Customer ke poore details — invoice detail view ke liye
+    customer_email   = serializers.CharField(source='customer.email', read_only=True, default='')
+    customer_phone   = serializers.CharField(source='customer.phone', read_only=True, default='')
+    customer_address = serializers.CharField(source='customer.address', read_only=True, default='')
+    customer_tax_number = serializers.CharField(source='customer.tax_number', read_only=True, default='')
+
+    # Business (tenant) ke contact details — invoice header ke liye
+    business_name    = serializers.CharField(source='tenant.name', read_only=True, default='')
+    business_gst      = serializers.CharField(source='tenant.gst_number', read_only=True, default='')
+    business_phone    = serializers.CharField(source='tenant.business_phone', read_only=True, default='')
+    business_email    = serializers.CharField(source='tenant.business_email', read_only=True, default='')
+    business_address  = serializers.CharField(source='tenant.business_address', read_only=True, default='')
+    business_website  = serializers.CharField(source='tenant.business_website', read_only=True, default='')
+
     class Meta:
         model = Invoice
         fields = [
@@ -182,6 +196,16 @@ class InvoiceSerializer(serializers.ModelSerializer):
             'invoice_number',
             'customer',
             'customer_name',
+            'customer_email',
+            'customer_phone',
+            'customer_address',
+            'customer_tax_number',
+            'business_name',
+            'business_gst',
+            'business_phone',
+            'business_email',
+            'business_address',
+            'business_website',
             'invoice_date',
             'due_date',
             'subtotal',

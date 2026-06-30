@@ -96,27 +96,72 @@ export default function InvoiceDetailPage() {
       </div>
 
       {/* Invoice document */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-8 max-w-3xl mx-auto print:border-none print:shadow-none">
+      <div className="print-area rounded-2xl border border-gray-200 bg-white p-8 max-w-3xl mx-auto print:border-none print:shadow-none">
 
-        {/* Document header */}
+        {/* Document header — business details + invoice metadata */}
         <div className="flex items-start justify-between pb-6 border-b border-gray-100">
           <div>
-            <p className="text-xl font-bold text-gray-900">INVOICE</p>
-            <p className="text-sm text-gray-500 mt-1 font-mono">{invoice.invoice_number}</p>
+            <p className="text-xl font-bold text-gray-900">{invoice.business_name || 'Invoice'}</p>
+            <div className="mt-1.5 space-y-0.5">
+              {invoice.business_gst && (
+                <p className="text-xs text-gray-500">GSTIN: {invoice.business_gst}</p>
+              )}
+              {invoice.business_phone && (
+                <p className="text-xs text-gray-500">Phone: {invoice.business_phone}</p>
+              )}
+              {invoice.business_email && (
+                <p className="text-xs text-gray-500">Email: {invoice.business_email}</p>
+              )}
+              {invoice.business_website && (
+                <p className="text-xs text-gray-500">{invoice.business_website}</p>
+              )}
+              {invoice.business_address && (
+                <p className="text-xs text-gray-500 max-w-xs">{invoice.business_address}</p>
+              )}
+            </div>
           </div>
           <div className="text-right">
-            <StatusBadge status={invoice.status} />
-            <p className="text-xs text-gray-400 mt-2">Issued {formatDate(invoice.invoice_date)}</p>
-            {invoice.due_date && (
-              <p className="text-xs text-gray-400">Due {formatDate(invoice.due_date)}</p>
-            )}
+            <p className="text-lg font-bold text-gray-900">INVOICE</p>
+            <p className="text-sm text-gray-500 mt-0.5 font-mono">{invoice.invoice_number}</p>
+            <span className="inline-block mt-2 print:hidden">
+              <StatusBadge status={invoice.status} />
+            </span>
           </div>
         </div>
 
-        {/* Bill to */}
-        <div className="py-6 border-b border-gray-100">
-          <p className="text-xs font-medium uppercase tracking-wider text-gray-400 mb-2">Billed To</p>
-          <p className="text-base font-semibold text-gray-900">{invoice.customer_name}</p>
+        {/* Bill to + Invoice metadata */}
+        <div className="grid grid-cols-2 gap-6 py-6 border-b border-gray-100">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-400 mb-2">Billed To</p>
+            <p className="text-base font-semibold text-gray-900">{invoice.customer_name}</p>
+            <div className="mt-1 space-y-0.5">
+              {invoice.customer_phone && (
+                <p className="text-xs text-gray-500">{invoice.customer_phone}</p>
+              )}
+              {invoice.customer_email && (
+                <p className="text-xs text-gray-500">{invoice.customer_email}</p>
+              )}
+              {invoice.customer_address && (
+                <p className="text-xs text-gray-500 max-w-xs">{invoice.customer_address}</p>
+              )}
+              {invoice.customer_tax_number && (
+                <p className="text-xs text-gray-500">GST: {invoice.customer_tax_number}</p>
+              )}
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-400 mb-2">Invoice Details</p>
+            <div className="space-y-0.5">
+              <p className="text-xs text-gray-500">
+                Issue Date: <span className="text-gray-800 font-medium">{formatDate(invoice.invoice_date)}</span>
+              </p>
+              {invoice.due_date && (
+                <p className="text-xs text-gray-500">
+                  Due Date: <span className="text-gray-800 font-medium">{formatDate(invoice.due_date)}</span>
+                </p>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Line items */}
@@ -183,7 +228,26 @@ export default function InvoiceDetailPage() {
             <p className="text-sm text-gray-600">{invoice.notes}</p>
           </div>
         )}
+
+        {/* Footer */}
+        <div className="mt-8 pt-6 border-t border-gray-100 text-center">
+          <p className="text-sm text-gray-500">Thank you for your business.</p>
+          <p className="text-xs text-gray-300 mt-1">Generated using BillingMars</p>
+        </div>
       </div>
+
+      {/* Print-specific CSS — full A4-friendly layout, app chrome hidden */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          .print-area, .print-area * { visibility: visible; }
+          .print-area {
+            position: absolute; left: 0; top: 0; width: 100%;
+            margin: 0; padding: 24px; border: none !important;
+          }
+          @page { size: A4; margin: 12mm; }
+        }
+      `}</style>
     </Layout>
   )
 }
