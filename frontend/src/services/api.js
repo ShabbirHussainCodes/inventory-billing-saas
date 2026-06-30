@@ -42,6 +42,8 @@ export const billingAPI = {
   getInvoice: (id) => api.get(`/billing/invoices/${id}/`),
   getSummary: () => api.get('/billing/summary/'),
   updateInvoiceStatus: (id, status) => api.patch(`/billing/invoices/${id}/status/`, { status }),
+  getInvoiceDetail: (id) => api.get(`/billing/invoices/${id}/`),
+  updateInvoice: (id, data) => api.put(`/billing/invoices/${id}/`, data),
 }
 
 export const superAdminAPI = {

@@ -6,7 +6,7 @@ import { calcLine } from "./LineItemsTable"
 
 const SYM = { INR:'₹', USD:'$', AED:'AED ', GBP:'£', EUR:'€' }
 
-export default function InvoiceSummaryCard({ items=[], currency='INR', taxLabel='GST', onSaveDraft, onCreateInvoice, saving=null }) {
+export default function InvoiceSummaryCard({ items=[], currency='INR', taxLabel='GST', onSaveDraft, onCreateInvoice, saving=null, draftLabel='Save as Draft', submitLabel='Create Invoice' }) {
   const sym = SYM[currency] || currency+' '
   const fmt = n => `${sym}${Number(n).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})}`
 
@@ -97,16 +97,16 @@ export default function InvoiceSummaryCard({ items=[], currency='INR', taxLabel=
           onClick={onSaveDraft}
           disabled={!!saving || !hasItems}
           className="w-full rounded-lg border border-gray-200 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed">
-          {saving === 'draft' ? 'Saving…' : 'Save as Draft'}
+          {saving === 'draft' ? 'Saving…' : draftLabel}
         </button>
 
         <button type="button"
           onClick={onCreateInvoice}
           disabled={!!saving || !hasItems || hasStockIssue}
           className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-          {saving === 'invoice' ? 'Creating…' : (
+          {saving === 'invoice' ? 'Saving…' : (
             <>
-              Create Invoice
+              {submitLabel}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
                 strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
                 <polyline points="9 18 15 12 9 6"/>

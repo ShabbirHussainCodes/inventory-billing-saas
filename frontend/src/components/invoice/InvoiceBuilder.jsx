@@ -244,7 +244,7 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
   const [saving, setSaving] = useState(null)
   const [error, setError]   = useState('')
 
-  // Load data
+  // Load data — and pre-fill form if editing
   useEffect(() => {
     Promise.all([
       billingAPI.getCustomers(),
@@ -255,6 +255,33 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
       setProducts(pr.data)
       setCurrency(sr.data.currency || 'INR')
       setTaxLabel(sr.data.tax_label || 'GST')
+
+      // Edit mode — pre-fill everything from initialData
+      if (mode === 'edit' && initialData) {
+        const matchedCustomer = cr.data.find(c => c.id === initialData.customer)
+        setCustomer(matchedCustomer || null)
+        setInvoiceDate(initialData.invoice_date || todayISO())
+        setDueDate(initialData.due_date || '')
+        setNotes(initialData.notes || '')
+
+        const prefilledItems = (initialData.items || []).map(it => {
+          const product = pr.data.find(p => p.id === it.product)
+          // Stock available = current stock + jo isi invoice ne already allocate kiya tha
+          const stockAvailable = product ? product.stock_quantity + it.quantity : 0
+          return {
+            id: it.id || Date.now() + Math.random(),
+            product,
+            quantity: it.quantity,
+            unitPrice: parseFloat(it.unit_price),
+            costPrice: parseFloat(it.cost_price),
+            taxRate: parseFloat(it.tax_rate),
+            stockAvailable,
+            discountType: 'percent',
+            discountValue: 0,
+          }
+        })
+        setItems(prefilledItems.length > 0 ? prefilledItems : [newItem()])
+      }
     }).catch(() => setError('Could not load data. Please refresh.'))
     .finally(() => setDataLoading(false))
   }, [])
@@ -299,7 +326,11 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
     if (err) { setError(err); return }
     setSaving('draft'); setError('')
     try {
-      await billingAPI.createInvoice(buildPayload('draft'))
+      if (mode === 'edit') {
+        await billingAPI.updateInvoice(initialData.id, buildPayload('draft'))
+      } else {
+        await billingAPI.createInvoice(buildPayload('draft'))
+      }
       onSuccess?.()
     } catch(err) {
       setError(extractError(err, 'Failed to save draft.'))
@@ -311,7 +342,11 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
     if (err) { setError(err); return }
     setSaving('invoice'); setError('')
     try {
-      await billingAPI.createInvoice(buildPayload('sent'))
+      if (mode === 'edit') {
+        await billingAPI.updateInvoice(initialData.id, buildPayload('sent'))
+      } else {
+        await billingAPI.createInvoice(buildPayload('sent'))
+      }
       onSuccess?.()
     } catch(err) {
       setError(extractError(err, 'Failed to create invoice.'))
@@ -450,6 +485,8 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
             onSaveDraft={handleSaveDraft}
             onCreateInvoice={handleCreateInvoice}
             saving={saving}
+            draftLabel={mode === 'edit' ? 'Save Changes' : 'Save as Draft'}
+            submitLabel={mode === 'edit' ? 'Update & Send' : 'Create Invoice'}
           />
         </div>
       </div>

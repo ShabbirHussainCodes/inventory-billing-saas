@@ -127,7 +127,7 @@ def invoice_list(request):
         )
 
 
-@api_view(['GET'])
+@api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
 def invoice_detail(request, pk):
     tenant = get_active_tenant(request)
@@ -142,8 +142,34 @@ def invoice_detail(request, pk):
             status=status.HTTP_404_NOT_FOUND
         )
 
-    serializer = InvoiceSerializer(invoice)
-    return Response(serializer.data)
+    if request.method == 'GET':
+        serializer = InvoiceSerializer(invoice)
+        return Response(serializer.data)
+
+    elif request.method == 'PUT':
+        # Sirf draft invoices edit ho sakte hain — business rule
+        if invoice.status != 'draft':
+            return Response(
+                {'error': 'Only draft invoices can be edited.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from .serializers import InvoiceEditSerializer
+        serializer = InvoiceEditSerializer(
+            invoice,
+            data=request.data,
+            context={'tenant': tenant, 'user': request.user}
+        )
+        if serializer.is_valid():
+            updated_invoice = serializer.save()
+
+            from superadmin.audit import log_action
+            log_action(request, 'invoice_status_changed', tenant=tenant,
+                       target_type='invoice', target_name=updated_invoice.invoice_number,
+                       details={'action': 'edited'})
+
+            return Response(InvoiceSerializer(updated_invoice).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['PATCH'])

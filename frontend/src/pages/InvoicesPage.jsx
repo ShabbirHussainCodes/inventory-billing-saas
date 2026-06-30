@@ -127,12 +127,13 @@ export default function InvoicesPage() {
                 <th className="px-4 py-3 text-left font-medium">Amount</th>
                 <th className="px-4 py-3 text-left font-medium">Profit</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
+                <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center">
+                  <td colSpan={7} className="py-16 text-center">
                     <p className="text-sm font-medium text-gray-900 mb-1">
                       {search || statusFilter !== "all"
                         ? "No invoices match your filters"
@@ -177,6 +178,18 @@ export default function InvoicesPage() {
                     </td>
                     <td className="px-4 py-3.5">
                       <StatusBadge status={inv.status} />
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      {inv.status === 'draft' ? (
+                        <button
+                          onClick={() => navigate(`/invoices/edit/${inv.id}`)}
+                          className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 transition"
+                        >
+                          Edit
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
                     </td>
                   </tr>
                 ))

@@ -206,3 +206,131 @@ class InvoiceSerializer(serializers.ModelSerializer):
             'tax_label',
             'created_at'
         ]
+
+class InvoiceEditSerializer(serializers.ModelSerializer):
+    """
+    Edit existing DRAFT invoices only.
+    Restores stock from old items, then applies new items —
+    all wrapped in transaction.atomic() for data integrity.
+    """
+    items = InvoiceItemSerializer(many=True)
+
+    class Meta:
+        model = Invoice
+        fields = ['customer', 'invoice_date', 'due_date', 'status', 'notes', 'items']
+
+    def validate(self, attrs):
+        tenant = self.context['tenant']
+        invoice = self.instance
+
+        # Business rule — sirf draft invoices edit ho sakte hain
+        if invoice.status != 'draft':
+            raise serializers.ValidationError({
+                'non_field_errors': ['Only draft invoices can be edited.']
+            })
+
+        customer = attrs.get('customer')
+        if customer and customer.tenant != tenant:
+            raise serializers.ValidationError({'customer': 'Invalid customer.'})
+
+        # Purane items ka quantity map — stock restore karne ke liye
+        old_qty_map = {}
+        for old_item in invoice.items.all():
+            if old_item.product_id:
+                old_qty_map[old_item.product_id] = (
+                    old_qty_map.get(old_item.product_id, 0) + old_item.quantity
+                )
+
+        items = attrs.get('items', [])
+        for i, item in enumerate(items):
+            product = item.get('product')
+            quantity = item.get('quantity', 0)
+
+            if product and product.tenant != tenant:
+                raise serializers.ValidationError({
+                    'items': f'Invalid product in item {i + 1}.'
+                })
+
+            if product:
+                # Effective available = current stock + jo isi invoice ne already allocate kiya tha
+                effective_available = product.stock_quantity + old_qty_map.get(product.id, 0)
+                if effective_available < quantity:
+                    raise serializers.ValidationError({
+                        'items': (
+                            f'"{product.name}" has only {effective_available} '
+                            f'available (including current allocation).'
+                        )
+                    })
+
+        return attrs
+
+    def update(self, instance, validated_data):
+        from django.db import transaction
+        from inventory.models import StockMovement
+
+        tenant = self.context['tenant']
+        user = self.context['user']
+        items_data = validated_data.pop('items')
+
+        with transaction.atomic():
+            # Step 1 — Purane items ka stock wapas add karo, phir delete karo
+            old_items = list(instance.items.select_related('product').all())
+            for old_item in old_items:
+                if old_item.product:
+                    old_item.product.stock_quantity += old_item.quantity
+                    old_item.product.save()
+                    StockMovement.objects.create(
+                        tenant=tenant,
+                        product=old_item.product,
+                        movement_type='in',
+                        quantity=old_item.quantity,
+                        note='Invoice edited — stock restored',
+                        user=user,
+                    )
+            instance.items.all().delete()
+
+            # Step 2 — Invoice ke basic fields update karo
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+
+            # Step 3 — Naye items banao, stock minus karo, totals calculate karo
+            subtotal = 0
+            tax_amount = 0
+            total_profit = 0
+
+            for item_data in items_data:
+                product = item_data.get('product')
+
+                if product:
+                    item_data['product_name'] = product.name
+                    item_data['cost_price'] = product.cost_price
+                    item_data['tax_rate'] = product.tax_rate
+
+                    product.stock_quantity -= item_data['quantity']
+                    product.save()
+
+                    StockMovement.objects.create(
+                        tenant=tenant,
+                        product=product,
+                        movement_type='out',
+                        quantity=item_data['quantity'],
+                        note='Invoice edited — updated sale',
+                        user=user,
+                    )
+
+                invoice_item = InvoiceItem.objects.create(
+                    invoice=instance,
+                    **item_data
+                )
+
+                subtotal += invoice_item.subtotal
+                tax_amount += invoice_item.tax_amount
+                total_profit += invoice_item.profit
+
+            instance.subtotal = subtotal
+            instance.tax_amount = tax_amount
+            instance.total_amount = subtotal + tax_amount
+            instance.total_profit = total_profit
+            instance.save()
+
+        return instance
