@@ -2,7 +2,7 @@
 // Shows exactly what was sold: products, quantities, prices, tax, totals
 // This layout is also the foundation for future PDF download (Phase 6 Step 4)
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import Layout from "../components/Layout"
 import { billingAPI } from "../services/api"
@@ -47,6 +47,79 @@ export default function InvoiceDetailPage() {
   const [invoice, setInvoice] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const printRef = useRef(null)
+
+  // Download invoice as PDF — captures the print-area as an image, embeds in A4 PDF
+  const handleDownloadPDF = async () => {
+    if (!printRef.current) return
+    setGenerating(true)
+    try {
+      // Lazy load — sirf PDF download click hone par yeh libraries load hon,
+      // har invoice page load pe nahi (bundle size optimize)
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+      ])
+
+      // React state update ke baad DOM re-render hone ka wait karo —
+      // warna status badge/profit box capture mein reh jaayenge
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      const canvas = await html2canvas(printRef.current, {
+        scale: 2,           // sharper output
+        useCORS: true,
+        backgroundColor: '#ffffff',
+      })
+      const imgData = canvas.toDataURL('image/png')
+
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const pageHeight = pdf.internal.pageSize.getHeight()
+      const imgWidth = pageWidth
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+      // Agar content ek page se lamba hai, multi-page PDF banao
+      let heightLeft = imgHeight
+      let position = 0
+
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+      heightLeft -= pageHeight
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight
+        pdf.addPage()
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+        heightLeft -= pageHeight
+      }
+
+      pdf.save(`${invoice.invoice_number}.pdf`)
+    } catch (err) {
+      console.error('PDF generation failed:', err)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  // Share invoice summary on WhatsApp — no paid API, uses wa.me link
+  const handleWhatsAppShare = () => {
+    const phone = (invoice.customer_phone || '').replace(/[^0-9]/g, '')
+    const sym = SYM[invoice.currency] || invoice.currency + ' '
+    const amount = parseFloat(invoice.total_amount).toLocaleString()
+
+    const message =
+      `Hi ${invoice.customer_name}, here's your invoice from ${invoice.business_name || 'us'}:\n\n` +
+      `Invoice No: ${invoice.invoice_number}\n` +
+      `Date: ${formatDate(invoice.invoice_date)}\n` +
+      `Amount: ${sym}${amount}\n\n` +
+      `Thank you for your business!`
+
+    const url = phone
+      ? `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+      : `https://wa.me/?text=${encodeURIComponent(message)}`
+
+    window.open(url, '_blank')
+  }
 
   useEffect(() => {
     billingAPI.getInvoiceDetail(id)
@@ -89,14 +162,21 @@ export default function InvoiceDetailPage() {
             Edit Invoice
           </button>
         )}
-        <button onClick={() => window.print()}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition">
-          Print / Save PDF
+        <button onClick={handleWhatsAppShare}
+          className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100 transition">
+          <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+            <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.847 9.847 0 0012.04 2zm5.81 14.07c-.24.68-1.4 1.3-1.93 1.38-.5.08-1.12.11-1.81-.11-.42-.13-.95-.31-1.64-.6-2.88-1.24-4.76-4.15-4.91-4.34-.14-.2-1.18-1.57-1.18-3 0-1.42.75-2.12 1.01-2.41.27-.29.59-.36.78-.36.2 0 .39 0 .56.01.18.01.42-.07.66.5.24.59.83 2.02.9 2.17.07.15.12.32.02.51-.1.2-.15.32-.3.49-.15.18-.31.4-.45.53-.15.15-.3.31-.13.6.17.29.76 1.25 1.63 2.02 1.12 1 2.06 1.31 2.35 1.46.29.15.46.13.63-.07.17-.21.73-.85.93-1.14.2-.29.39-.24.66-.14.27.1 1.7.8 1.99.95.29.15.49.22.56.34.07.13.07.74-.17 1.42z"/>
+          </svg>
+          WhatsApp
+        </button>
+        <button onClick={handleDownloadPDF} disabled={generating}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition disabled:opacity-50">
+          {generating ? 'Generating…' : 'Download PDF'}
         </button>
       </div>
 
       {/* Invoice document */}
-      <div className="print-area rounded-2xl border border-gray-200 bg-white p-8 max-w-3xl mx-auto print:border-none print:shadow-none">
+      <div ref={printRef} className="print-area rounded-2xl border border-gray-200 bg-white p-8 max-w-3xl mx-auto print:border-none print:shadow-none">
 
         {/* Document header — business details + invoice metadata */}
         <div className="flex items-start justify-between pb-6 border-b border-gray-100">
@@ -123,7 +203,7 @@ export default function InvoiceDetailPage() {
           <div className="text-right">
             <p className="text-lg font-bold text-gray-900">INVOICE</p>
             <p className="text-sm text-gray-500 mt-0.5 font-mono">{invoice.invoice_number}</p>
-            <span className="inline-block mt-2 print:hidden">
+            <span className={`inline-block mt-2 print:hidden ${generating ? "hidden" : ""}`}>
               <StatusBadge status={invoice.status} />
             </span>
           </div>
@@ -214,7 +294,7 @@ export default function InvoiceDetailPage() {
         </div>
 
         {/* Internal note: profit — hidden when printing (customer shouldn't see this) */}
-        <div className="mt-4 flex justify-end print:hidden">
+        <div className={`mt-4 flex justify-end print:hidden ${generating ? "hidden" : ""}`}>
           <div className="w-64 rounded-lg bg-green-50 border border-green-100 px-3 py-2 flex items-center justify-between">
             <span className="text-xs font-medium text-green-700">Your Profit</span>
             <span className="text-sm font-bold text-green-700">{fmt(invoice.total_profit)}</span>
