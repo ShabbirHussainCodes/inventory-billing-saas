@@ -98,7 +98,8 @@ def product_list(request):
         # nahi hai isliye DRF automatically unique_together validate nahi kar
         # sakta. Iske bina IntegrityError crash hota tha (500 error).
         sku = (request.data.get('sku') or '').strip()
-        if sku and Product.objects.filter(tenant=tenant, sku=sku).exists():
+        # Sirf ACTIVE products mein check karo — deleted product ka SKU reuse ho sakta hai
+        if sku and Product.objects.filter(tenant=tenant, sku=sku, is_active=True).exists():
             return Response(
                 {'sku': [f'A product with SKU "{sku}" already exists.']},
                 status=status.HTTP_400_BAD_REQUEST
@@ -152,7 +153,7 @@ def product_detail(request, pk):
         # product (isi tenant mein) wahi SKU use na kar raha ho
         new_sku = (request.data.get('sku') or '').strip()
         if new_sku and new_sku != product.sku:
-            if Product.objects.filter(tenant=tenant, sku=new_sku).exclude(pk=product.pk).exists():
+            if Product.objects.filter(tenant=tenant, sku=new_sku, is_active=True).exclude(pk=product.pk).exists():
                 return Response(
                     {'sku': [f'A product with SKU "{new_sku}" already exists.']},
                     status=status.HTTP_400_BAD_REQUEST

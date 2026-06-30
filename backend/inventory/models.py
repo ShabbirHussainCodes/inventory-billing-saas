@@ -133,10 +133,18 @@ class Product(models.Model):
 
     class Meta:
         ordering = ['name']
-        unique_together = ['tenant', 'sku']
         indexes = [
             models.Index(fields=['tenant', 'is_active']),
             models.Index(fields=['tenant', 'stock_quantity']),
+        ]
+        constraints = [
+            # SKU sirf ACTIVE products mein unique ho — deleted (inactive)
+            # products ka SKU dobara use kiya ja sakta hai
+            models.UniqueConstraint(
+                fields=['tenant', 'sku'],
+                condition=models.Q(is_active=True),
+                name='unique_active_sku_per_tenant',
+            )
         ]
 
 
