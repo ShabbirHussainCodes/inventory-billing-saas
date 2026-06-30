@@ -2,6 +2,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.utils import timezone
 from .models import Category, Supplier, Product, StockMovement
 from .serializers import (
     CategorySerializer,
@@ -337,3 +338,64 @@ def add_stock_movement(request):
         serializer.errors,
         status=status.HTTP_400_BAD_REQUEST
     )
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def stock_movement_list(request):
+    """
+    Stock movement history — filters ke saath.
+    Query params: product_id, movement_type, days, page, page_size
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    movements = StockMovement.objects.filter(tenant=tenant).select_related('product', 'user')
+
+    product_id = request.query_params.get('product_id')
+    if product_id:
+        movements = movements.filter(product_id=product_id)
+
+    movement_type = request.query_params.get('movement_type')
+    if movement_type:
+        movements = movements.filter(movement_type=movement_type)
+
+    days = request.query_params.get('days')
+    if days:
+        import datetime
+        try:
+            since = timezone.now() - datetime.timedelta(days=int(days))
+            movements = movements.filter(created_at__gte=since)
+        except ValueError:
+            pass
+
+    movements = movements.order_by('-created_at')
+
+    # Pagination — same pattern jo audit log mein use kiya
+    total_count = movements.count()
+    page = max(1, int(request.query_params.get('page', 1)))
+    page_size = min(100, max(10, int(request.query_params.get('page_size', 50))))
+    start = (page - 1) * page_size
+    end = start + page_size
+    movements_page = movements[start:end]
+
+    data = []
+    for m in movements_page:
+        data.append({
+            'id': str(m.id),
+            'product_id': str(m.product_id) if m.product_id else None,
+            'product_name': m.product.name if m.product else 'Deleted product',
+            'movement_type': m.movement_type,
+            'quantity': m.quantity,
+            'note': m.note,
+            'user_email': m.user.email if m.user else 'System',
+            'created_at': m.created_at.isoformat(),
+        })
+
+    return Response({
+        'count': total_count,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': max(1, (total_count + page_size - 1) // page_size),
+        'results': data,
+    })

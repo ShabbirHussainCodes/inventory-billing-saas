@@ -27,6 +27,17 @@ export const inventoryAPI = {
   updateProduct: (id, data) => api.put(`/inventory/products/${id}/`, data),
   deleteProduct: (id) => api.delete(`/inventory/products/${id}/`),
   getLowStock: () => api.get('/inventory/low-stock/'),
+
+  getStockMovements: ({ productId = null, movementType = null, days = null, page = 1, pageSize = 50 } = {}) => {
+    const params = new URLSearchParams()
+    if (productId) params.append('product_id', productId)
+    if (movementType) params.append('movement_type', movementType)
+    if (days) params.append('days', days)
+    params.append('page', page)
+    params.append('page_size', pageSize)
+    return api.get(`/inventory/stock-movements/?${params.toString()}`)
+  },
+  addStockMovement: (data) => api.post('/inventory/stock-movement/', data),
   addStockMovement: (data) => api.post('/inventory/stock-movement/', data),
   getCategories: () => api.get('/inventory/categories/'),
   addCategory: (data) => api.post('/inventory/categories/', data),

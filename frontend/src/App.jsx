@@ -12,6 +12,7 @@ import EditInvoicePage from "./pages/EditInvoicePage"
 import InvoiceDetailPage from "./pages/InvoiceDetailPage"
 import SettingsPage from "./pages/SettingsPage"
 import CategoriesSuppliersPage from "./pages/CategoriesSuppliersPage"
+import StockHistoryPage from "./pages/StockHistoryPage"
 
 // Founder Command Center (with AdminLayout sidebar)
 import RoleRoute from "./components/RoleRoute"
@@ -50,6 +51,7 @@ function App() {
         <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
         <Route path="/inventory" element={<ProtectedRoute><CategoriesSuppliersPage /></ProtectedRoute>} />
+        <Route path="/stock-history" element={<ProtectedRoute><StockHistoryPage /></ProtectedRoute>} />
         <Route path="/customers" element={<ProtectedRoute><CustomersPage /></ProtectedRoute>} />
 
         {/* Founder Command Center — AdminLayout sidebar ke saath */}

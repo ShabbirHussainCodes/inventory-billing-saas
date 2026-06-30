@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 import Layout from "../components/Layout"
 import { inventoryAPI } from "../services/api"
 
@@ -150,6 +151,7 @@ function Skeleton() {
 // ─── Main ProductsPage ─────────────────────────────────────────────────────────
 
 export default function ProductsPage() {
+  const navigate = useNavigate()
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
@@ -229,6 +231,10 @@ export default function ProductsPage() {
             {lowStockCount > 0 && <> · <span className="text-amber-600">{lowStockCount} low stock</span></>}
           </p>
         </div>
+        <button onClick={() => navigate("/stock-history")}
+          className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition">
+          Stock History →
+        </button>
         <button onClick={() => setAddModal(true)}
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition">
           + Add Product

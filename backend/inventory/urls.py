@@ -19,4 +19,5 @@ urlpatterns = [
 
     # Stock movement
     path('stock-movement/', views.add_stock_movement, name='stock-movement'),
+    path('stock-movements/', views.stock_movement_list, name='stock-movement-list'),
 ]
