@@ -29,7 +29,14 @@ export const inventoryAPI = {
   getLowStock: () => api.get('/inventory/low-stock/'),
   addStockMovement: (data) => api.post('/inventory/stock-movement/', data),
   getCategories: () => api.get('/inventory/categories/'),
+  addCategory: (data) => api.post('/inventory/categories/', data),
+  updateCategory: (id, data) => api.put(`/inventory/categories/${id}/`, data),
+  deleteCategory: (id) => api.delete(`/inventory/categories/${id}/`),
+
   getSuppliers: () => api.get('/inventory/suppliers/'),
+  addSupplier: (data) => api.post('/inventory/suppliers/', data),
+  updateSupplier: (id, data) => api.put(`/inventory/suppliers/${id}/`, data),
+  deleteSupplier: (id) => api.delete(`/inventory/suppliers/${id}/`),
 }
 
 export const billingAPI = {

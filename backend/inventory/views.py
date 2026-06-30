@@ -43,6 +43,41 @@ def category_list(request):
         )
 
 
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def category_detail(request, pk):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    try:
+        category = Category.objects.get(pk=pk, tenant=tenant)
+    except Category.DoesNotExist:
+        return Response({'error': 'Category not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(CategorySerializer(category).data)
+
+    elif request.method == 'PUT':
+        serializer = CategorySerializer(category, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            from superadmin.audit import log_action
+            log_action(request, 'product_updated', tenant=tenant,
+                       target_type='category', target_name=category.name)
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    elif request.method == 'DELETE':
+        # Soft delete — products jo isse linked hain unka category null ho jaayega
+        category.is_active = False
+        category.save()
+        from superadmin.audit import log_action
+        log_action(request, 'product_deleted', tenant=tenant,
+                   target_type='category', target_name=category.name)
+        return Response({'message': 'Category deleted successfully.'})
+
+
 # ─── SUPPLIER VIEWS ───────────────────────────────────────
 
 @api_view(['GET', 'POST'])
@@ -72,6 +107,40 @@ def supplier_list(request):
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST
         )
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def supplier_detail(request, pk):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    try:
+        supplier = Supplier.objects.get(pk=pk, tenant=tenant)
+    except Supplier.DoesNotExist:
+        return Response({'error': 'Supplier not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(SupplierSerializer(supplier).data)
+
+    elif request.method == 'PUT':
+        serializer = SupplierSerializer(supplier, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            from superadmin.audit import log_action
+            log_action(request, 'product_updated', tenant=tenant,
+                       target_type='supplier', target_name=supplier.name)
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    elif request.method == 'DELETE':
+        supplier.is_active = False
+        supplier.save()
+        from superadmin.audit import log_action
+        log_action(request, 'product_deleted', tenant=tenant,
+                   target_type='supplier', target_name=supplier.name)
+        return Response({'message': 'Supplier deleted successfully.'})
 
 
 # ─── PRODUCT VIEWS ────────────────────────────────────────
