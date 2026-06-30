@@ -2,7 +2,7 @@
 // Shows exactly what was sold: products, quantities, prices, tax, totals
 // This layout is also the foundation for future PDF download (Phase 6 Step 4)
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import Layout from "../components/Layout"
 import { billingAPI } from "../services/api"
@@ -169,14 +169,14 @@ export default function InvoiceDetailPage() {
           </svg>
           WhatsApp
         </button>
-        <button onClick={handleDownloadPDF} disabled={generating}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition disabled:opacity-50">
-          {generating ? 'Generating…' : 'Download PDF'}
+        <button onClick={() => window.print()}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition">
+          Print / Save PDF
         </button>
       </div>
 
       {/* Invoice document */}
-      <div ref={printRef} className="print-area rounded-2xl border border-gray-200 bg-white p-8 max-w-3xl mx-auto print:border-none print:shadow-none">
+      <div className="print-area rounded-2xl border border-gray-200 bg-white p-8 max-w-3xl mx-auto print:border-none print:shadow-none">
 
         {/* Document header — business details + invoice metadata */}
         <div className="flex items-start justify-between pb-6 border-b border-gray-100">
@@ -203,7 +203,7 @@ export default function InvoiceDetailPage() {
           <div className="text-right">
             <p className="text-lg font-bold text-gray-900">INVOICE</p>
             <p className="text-sm text-gray-500 mt-0.5 font-mono">{invoice.invoice_number}</p>
-            <span className={`inline-block mt-2 print:hidden ${generating ? "hidden" : ""}`}>
+            <span className="inline-block mt-2 print:hidden">
               <StatusBadge status={invoice.status} />
             </span>
           </div>
@@ -294,7 +294,7 @@ export default function InvoiceDetailPage() {
         </div>
 
         {/* Internal note: profit — hidden when printing (customer shouldn't see this) */}
-        <div className={`mt-4 flex justify-end print:hidden ${generating ? "hidden" : ""}`}>
+        <div className="mt-4 flex justify-end print:hidden">
           <div className="w-64 rounded-lg bg-green-50 border border-green-100 px-3 py-2 flex items-center justify-between">
             <span className="text-xs font-medium text-green-700">Your Profit</span>
             <span className="text-sm font-bold text-green-700">{fmt(invoice.total_profit)}</span>
