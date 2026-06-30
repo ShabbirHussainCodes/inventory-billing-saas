@@ -206,9 +206,12 @@ export default function InvoicesPage() {
                 filtered.map((inv) => (
                   <tr key={inv.id} className="hover:bg-gray-50/60 transition">
                     <td className="px-4 py-3.5">
-                      <p className="font-medium font-mono text-sm text-gray-900">
+                      <button
+                        onClick={() => navigate(`/invoices/${inv.id}`)}
+                        className="font-medium font-mono text-sm text-blue-600 hover:underline"
+                      >
                         {inv.invoice_number}
-                      </p>
+                      </button>
                     </td>
                     <td className="px-4 py-3.5 text-gray-700">
                       {inv.customer_name}

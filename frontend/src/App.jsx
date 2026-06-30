@@ -9,6 +9,7 @@ import InvoicesPage from "./pages/InvoicesPage"
 import CustomersPage from "./pages/CustomersPage"
 import CreateInvoicePage from "./pages/CreateInvoicePage"
 import EditInvoicePage from "./pages/EditInvoicePage"
+import InvoiceDetailPage from "./pages/InvoiceDetailPage"
 
 // Founder Command Center (with AdminLayout sidebar)
 import RoleRoute from "./components/RoleRoute"
@@ -44,6 +45,7 @@ function App() {
         <Route path="/invoices" element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>} />
         <Route path="/invoices/create" element={<ProtectedRoute><CreateInvoicePage /></ProtectedRoute>} />
         <Route path="/invoices/edit/:id" element={<ProtectedRoute><EditInvoicePage /></ProtectedRoute>} />
+        <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />
         <Route path="/customers" element={<ProtectedRoute><CustomersPage /></ProtectedRoute>} />
 
         {/* Founder Command Center — AdminLayout sidebar ke saath */}
