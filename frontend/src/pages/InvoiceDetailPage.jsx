@@ -59,7 +59,7 @@ export default function InvoiceDetailPage() {
       // har invoice page load pe nahi (bundle size optimize)
       const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
         import('jspdf'),
-        import('html2canvas'),
+        import('html2canvas-pro'),
       ])
 
       // React state update ke baad DOM re-render hone ka wait karo —
