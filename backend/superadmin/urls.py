@@ -14,6 +14,8 @@ urlpatterns = [
     path('tenants/<uuid:tenant_id>/grant-access/', views.grant_access, name='admin-grant-access'),
     path('tenants/<uuid:tenant_id>/upgrade/', views.upgrade_tenant, name='admin-upgrade-tenant'),
     path('tenants/<uuid:tenant_id>/reports/', views.tenant_reports, name='admin-tenant-reports'),
+    path('tenants/<uuid:tenant_id>/permanent-delete/', views.permanent_delete_tenant, name='admin-permanent-delete-tenant'),
+    path('deletion-history/', views.deletion_history, name='admin-deletion-history'),
 
     # View Business Data (old superadmin endpoints)
     path('tenants/<uuid:tenant_id>/products/', views.tenant_products, name='admin-tenant-products'),

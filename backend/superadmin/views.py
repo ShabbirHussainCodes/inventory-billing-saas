@@ -937,3 +937,85 @@ def platform_analytics(request):
         'top_businesses':   top_businesses,
         'total_tenants':    total_tenants,
     })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def permanent_delete_tenant(request, tenant_id):
+    """
+    Tenant ko PERMANENTLY delete karo — poora data cascade delete hoga
+    (products, invoices, customers, users, sab). Irreversible hai.
+
+    Safety: business ka exact naam confirm karna zaroori hai request mein,
+    warna 400 error. Yeh accidental delete se bachata hai.
+    """
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+    except Tenant.DoesNotExist:
+        return Response({'error': 'Tenant not found.'}, status=404)
+
+    # Confirmation — exact business name match karna hoga
+    confirm_name = (request.data.get('confirm_name') or '').strip()
+    if confirm_name != tenant.name:
+        return Response({
+            'error': 'Business name does not match. Type the exact name to confirm deletion.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    from inventory.models import Product
+    from billing.models import Customer, Invoice
+    from users.models import CustomUser
+    from .models import TenantDeletionLog
+
+    # Delete se PEHLE snapshot lo — counts, naam, email — sab save karo
+    snapshot = TenantDeletionLog.objects.create(
+        tenant_id_snapshot=tenant.id,
+        tenant_name=tenant.name,
+        owner_email=tenant.owner_email or '',
+        products_count=Product.objects.filter(tenant=tenant).count(),
+        customers_count=Customer.objects.filter(tenant=tenant).count(),
+        invoices_count=Invoice.objects.filter(tenant=tenant).count(),
+        users_count=CustomUser.objects.filter(tenant=tenant).count(),
+        deleted_by=request.user,
+        deleted_by_email_snapshot=request.user.email,
+        reason=request.data.get('reason', ''),
+    )
+
+    tenant_name = tenant.name
+    tenant.delete()  # CASCADE — poora data chala jaayega
+
+    return Response({
+        'message': f'"{tenant_name}" and all its data have been permanently deleted.',
+        'deletion_log_id': str(snapshot.id),
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def deletion_history(request):
+    """
+    Deleted tenants ka permanent history — founder ke apne records ke liye.
+    """
+    if not is_super_admin(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
+
+    from .models import TenantDeletionLog
+
+    logs = TenantDeletionLog.objects.all()[:100]  # recent 100, simple cap
+
+    data = [{
+        'id': str(log.id),
+        'tenant_name': log.tenant_name,
+        'owner_email': log.owner_email,
+        'products_count': log.products_count,
+        'customers_count': log.customers_count,
+        'invoices_count': log.invoices_count,
+        'users_count': log.users_count,
+        'deleted_by_email': log.deleted_by_email_snapshot,
+        'reason': log.reason,
+        'deleted_at': log.deleted_at.isoformat(),
+    } for log in logs]
+
+    return Response({'results': data, 'count': len(data)})

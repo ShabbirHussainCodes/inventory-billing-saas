@@ -113,3 +113,45 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.actor.email} | {self.action} | {self.tenant.name}"
+
+
+class TenantDeletionLog(models.Model):
+    """
+    Permanent record of deleted tenants — survives even after the
+    tenant itself is gone (no FK to Tenant, sirf snapshot fields).
+
+    Yeh isliye alag model hai, AuditLog nahi — kyunki AuditLog.tenant
+    CASCADE hai, matlab agar hum "tenant deleted" wala record AuditLog
+    mein save karte, woh khud bhi tenant delete hote hi mit jaata
+    (apna hi proof gayab). Yahan koi FK nahi hai, isliye yeh permanent hai.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Snapshot — tenant delete hone ke baad bhi yeh info bachi rahegi
+    tenant_id_snapshot = models.UUIDField()   # FK nahi, sirf reference ke liye
+    tenant_name = models.CharField(max_length=255)
+    owner_email = models.CharField(max_length=255, blank=True)
+
+    # Kitna data delete hua — transparency ke liye
+    products_count = models.IntegerField(default=0)
+    customers_count = models.IntegerField(default=0)
+    invoices_count = models.IntegerField(default=0)
+    users_count = models.IntegerField(default=0)
+
+    # Kisne delete kiya — user delete ho jaaye toh bhi email yaad rahe
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='tenant_deletions'
+    )
+    deleted_by_email_snapshot = models.CharField(max_length=255, blank=True)
+
+    reason = models.CharField(max_length=255, blank=True)  # optional note
+    deleted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-deleted_at']
+
+    def __str__(self):
+        return f"{self.tenant_name} deleted on {self.deleted_at.date()}"

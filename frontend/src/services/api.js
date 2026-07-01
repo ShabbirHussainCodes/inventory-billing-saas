@@ -167,6 +167,8 @@ export const superAdminAPI = {
   toggleTenant: (id) => api.put(`/superadmin/tenants/${id}/toggle/`),
   grantAccess: (id) => api.put(`/superadmin/tenants/${id}/grant-access/`),
   upgradeTenant: (id, data) => api.put(`/superadmin/tenants/${id}/upgrade/`, data),
+  permanentDeleteTenant: (id, data) => api.post(`/superadmin/tenants/${id}/permanent-delete/`, data),
+  getDeletionHistory: () => api.get('/superadmin/deletion-history/'),
 
   // Users
   getUsers: () => api.get('/superadmin/users/'),

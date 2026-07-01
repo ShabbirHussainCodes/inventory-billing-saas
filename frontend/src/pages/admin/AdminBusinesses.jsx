@@ -124,14 +124,19 @@ function ActionMenu({ business, onAction }) {
               Grant free access
             </button>
           )}
-          {business.access_type !== 'paid' && (
-            <button
-              onClick={() => { onAction('upgrade', business); setOpen(false) }}
-              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition"
-            >
-              Change Plan
-            </button>
-          )}
+          <button
+            onClick={() => { onAction('upgrade', business); setOpen(false) }}
+            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition"
+          >
+            Change Plan
+          </button>
+          <div className="my-1 border-t border-gray-100" />
+          <button
+            onClick={() => { onAction('permanent-delete', business); setOpen(false) }}
+            className="w-full px-4 py-2 text-left text-sm font-medium text-red-700 hover:bg-red-50 transition"
+          >
+            Delete Permanently
+          </button>
         </div>
       )}
     </>
@@ -173,6 +178,111 @@ function ConfirmModal({ confirm, onConfirm, onCancel, loading }) {
             }`}
           >
             {loading ? 'Working…' : isSuspend ? 'Suspend' : 'Activate'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Permanent Delete modal ──────────────────────────────────────────────────
+// GitHub-style — exact business name type karna zaroori hai, warna delete
+// disabled rehta hai. Yeh irreversible action hai, isliye extra friction OK hai.
+
+function DeleteTenantModal({ business, onClose, onDeleted }) {
+  const [typedName, setTypedName] = useState("")
+  const [reason, setReason] = useState("")
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState("")
+
+  if (!business) return null
+
+  const isMatch = typedName.trim() === business.name
+  const hasActivity = (business.invoice_count || 0) > 0
+
+  const handleDelete = async () => {
+    if (!isMatch) return
+    setDeleting(true)
+    setError("")
+    try {
+      const res = await superAdminAPI.permanentDeleteTenant(business.id, {
+        confirm_name: typedName.trim(),
+        reason: reason.trim(),
+      })
+      onDeleted(res.data.message)
+    } catch (err) {
+      setError(err?.response?.data?.error || "Failed to delete. Please try again.")
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+
+        {/* Header — clearly dangerous */}
+        <div className="border-b border-red-100 bg-red-50 px-6 py-4 rounded-t-2xl">
+          <div className="flex items-center gap-2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+              strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 text-red-600" aria-hidden="true">
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <h3 className="text-base font-semibold text-red-700">Delete Permanently</h3>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 space-y-4">
+          <p className="text-sm text-gray-600">
+            This will permanently delete <strong className="text-gray-900">"{business.name}"</strong> and
+            ALL its data — products, invoices, customers, and users. This action{" "}
+            <strong className="text-red-600">cannot be undone</strong>.
+          </p>
+
+          {hasActivity && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <p className="text-xs text-amber-700">
+                ⚠ This business has <strong>{business.invoice_count} invoice{business.invoice_count !== 1 ? 's' : ''}</strong>{" "}
+                — it looks active, not a test account. Double-check before deleting.
+              </p>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">
+              Type <strong className="text-gray-800">{business.name}</strong> to confirm
+            </label>
+            <input
+              value={typedName}
+              onChange={(e) => setTypedName(e.target.value)}
+              placeholder={business.name}
+              autoFocus
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Reason (optional, for your records)</label>
+            <input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. fake signup, test account"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30"
+            />
+          </div>
+
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+          <button onClick={onClose} disabled={deleting}
+            className="rounded-lg border border-gray-200 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={handleDelete} disabled={!isMatch || deleting}
+            className="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700 transition disabled:opacity-40 disabled:cursor-not-allowed">
+            {deleting ? "Deleting…" : "Delete Permanently"}
           </button>
         </div>
       </div>
@@ -243,6 +353,7 @@ export default function AdminBusinesses() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [planFilter, setPlanFilter] = useState("all")
   const [confirm, setConfirm] = useState(null)   // { action, business }
+  const [deleteTarget, setDeleteTarget] = useState(null)  // business being permanently deleted
   const [actionLoading, setActionLoading] = useState(false)
   const [toast, setToast] = useState("")
 
@@ -281,6 +392,8 @@ export default function AdminBusinesses() {
     // Suspend/Activate = destructive → confirmation required
     if (action === 'suspend' || action === 'activate') {
       setConfirm({ action, business })
+    } else if (action === 'permanent-delete') {
+      setDeleteTarget(business)
     } else {
       performAction(action, business)
     }
@@ -530,6 +643,18 @@ export default function AdminBusinesses() {
         onConfirm={() => performAction(confirm.action, confirm.business)}
         onCancel={() => setConfirm(null)}
         loading={actionLoading}
+      />
+
+      {/* Permanent delete modal */}
+      <DeleteTenantModal
+        business={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={(message) => {
+          setDeleteTarget(null)
+          setToast(message)
+          fetchBusinesses()
+          setTimeout(() => setToast(""), 4000)
+        }}
       />
 
       {/* Toast */}
