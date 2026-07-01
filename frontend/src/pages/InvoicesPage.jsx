@@ -166,59 +166,48 @@ export default function InvoicesPage() {
         </select>
       </div>
 
-      {/* Table */}
+      {/* List */}
       {loading ? (
         <InvoicesSkeleton />
+      ) : filtered.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center">
+          <p className="text-sm font-medium text-gray-900 mb-1">
+            {search || statusFilter !== "all" ? "No invoices match your filters" : "No invoices yet"}
+          </p>
+          {!search && statusFilter === "all" && (
+            <button onClick={() => navigate("/invoices/create")}
+              className="mt-2 text-sm text-blue-600 hover:underline">
+              Create your first invoice →
+            </button>
+          )}
+        </div>
       ) : (
-        <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 text-xs text-gray-400">
-                <th className="px-4 py-3 text-left font-medium">Invoice</th>
-                <th className="px-4 py-3 text-left font-medium">Customer</th>
-                <th className="px-4 py-3 text-left font-medium">Date</th>
-                <th className="px-4 py-3 text-left font-medium">Amount</th>
-                <th className="px-4 py-3 text-left font-medium">Profit</th>
-                <th className="px-4 py-3 text-left font-medium">Status</th>
-                <th className="px-4 py-3 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-16 text-center">
-                    <p className="text-sm font-medium text-gray-900 mb-1">
-                      {search || statusFilter !== "all"
-                        ? "No invoices match your filters"
-                        : "No invoices yet"}
-                    </p>
-                    {!search && statusFilter === "all" && (
-                      <button
-                        onClick={() => navigate("/invoices/create")}
-                        className="mt-2 text-sm text-blue-600 hover:underline"
-                      >
-                        Create your first invoice →
-                      </button>
-                    )}
-                  </td>
+        <>
+          {/* Desktop table */}
+          <div className="hidden md:block rounded-2xl border border-gray-200 bg-white overflow-hidden">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-xs text-gray-400">
+                  <th className="px-4 py-3 text-left font-medium">Invoice</th>
+                  <th className="px-4 py-3 text-left font-medium">Customer</th>
+                  <th className="px-4 py-3 text-left font-medium">Date</th>
+                  <th className="px-4 py-3 text-left font-medium">Amount</th>
+                  <th className="px-4 py-3 text-left font-medium">Profit</th>
+                  <th className="px-4 py-3 text-left font-medium">Status</th>
+                  <th className="px-4 py-3 text-right font-medium">Actions</th>
                 </tr>
-              ) : (
-                filtered.map((inv) => (
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map((inv) => (
                   <tr key={inv.id} className="hover:bg-gray-50/60 transition">
                     <td className="px-4 py-3.5">
-                      <button
-                        onClick={() => navigate(`/invoices/${inv.id}`)}
-                        className="font-medium font-mono text-sm text-blue-600 hover:underline"
-                      >
+                      <button onClick={() => navigate(`/invoices/${inv.id}`)}
+                        className="font-medium font-mono text-sm text-blue-600 hover:underline">
                         {inv.invoice_number}
                       </button>
                     </td>
-                    <td className="px-4 py-3.5 text-gray-700">
-                      {inv.customer_name}
-                    </td>
-                    <td className="px-4 py-3.5 text-gray-500 text-xs">
-                      {formatDate(inv.invoice_date)}
-                    </td>
+                    <td className="px-4 py-3.5 text-gray-700">{inv.customer_name}</td>
+                    <td className="px-4 py-3.5 text-gray-500 text-xs">{formatDate(inv.invoice_date)}</td>
                     <td className="px-4 py-3.5">
                       <p className="font-semibold text-gray-900">
                         {inv.currency} {parseFloat(inv.total_amount).toLocaleString()}
@@ -232,22 +221,16 @@ export default function InvoicesPage() {
                         {inv.currency} {parseFloat(inv.total_profit).toLocaleString()}
                       </span>
                     </td>
-                    <td className="px-4 py-3.5">
-                      <StatusBadge status={inv.status} />
-                    </td>
+                    <td className="px-4 py-3.5"><StatusBadge status={inv.status} /></td>
                     <td className="px-4 py-3.5 text-right">
                       {inv.status === 'draft' ? (
                         <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => navigate(`/invoices/edit/${inv.id}`)}
-                            className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 transition"
-                          >
+                          <button onClick={() => navigate(`/invoices/edit/${inv.id}`)}
+                            className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 transition">
                             Edit
                           </button>
-                          <button
-                            onClick={() => setDeleteConfirm(inv)}
-                            className="rounded-lg border border-red-100 px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 transition"
-                          >
+                          <button onClick={() => setDeleteConfirm(inv)}
+                            className="rounded-lg border border-red-100 px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 transition">
                             Delete
                           </button>
                         </div>
@@ -256,11 +239,50 @@ export default function InvoicesPage() {
                       )}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-2">
+            {filtered.map((inv) => (
+              <div key={inv.id} className="rounded-2xl border border-gray-200 bg-white p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <button onClick={() => navigate(`/invoices/${inv.id}`)}
+                    className="font-mono text-sm font-semibold text-blue-600 hover:underline">
+                    {inv.invoice_number}
+                  </button>
+                  <StatusBadge status={inv.status} />
+                </div>
+                <p className="text-sm text-gray-700 mb-1">{inv.customer_name}</p>
+                <p className="text-xs text-gray-400 mb-3">{formatDate(inv.invoice_date)}</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">
+                      {inv.currency} {parseFloat(inv.total_amount).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-green-600 font-medium">
+                      Profit: {inv.currency} {parseFloat(inv.total_profit).toLocaleString()}
+                    </p>
+                  </div>
+                  {inv.status === 'draft' && (
+                    <div className="flex gap-2">
+                      <button onClick={() => navigate(`/invoices/edit/${inv.id}`)}
+                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50">
+                        Edit
+                      </button>
+                      <button onClick={() => setDeleteConfirm(inv)}
+                        className="rounded-lg border border-red-100 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50">
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
       <DeleteConfirm
         invoice={deleteConfirm}

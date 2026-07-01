@@ -298,37 +298,36 @@ export default function ProductsPage() {
       {/* Table */}
       {loading ? (
         <Skeleton />
+      ) : filtered.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center">
+          <p className="text-sm font-medium text-gray-900 mb-1">
+            {search ? "No products match your search" : "No products yet"}
+          </p>
+          {!search && (
+            <button onClick={() => setAddModal(true)} className="mt-2 text-sm text-blue-600 hover:underline">
+              Add your first product →
+            </button>
+          )}
+        </div>
       ) : (
-        <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 text-xs text-gray-400">
-                <th className="px-4 py-3 text-left font-medium">Product</th>
-                <th className="px-4 py-3 text-left font-medium">Category</th>
-                <th className="px-4 py-3 text-left font-medium">SKU</th>
-                <th className="px-4 py-3 text-left font-medium">Cost</th>
-                <th className="px-4 py-3 text-left font-medium">Selling</th>
-                <th className="px-4 py-3 text-left font-medium">Margin</th>
-                <th className="px-4 py-3 text-left font-medium">Stock</th>
-                <th className="px-4 py-3 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-16 text-center">
-                    <p className="text-sm font-medium text-gray-900 mb-1">
-                      {search ? "No products match your search" : "No products yet"}
-                    </p>
-                    {!search && (
-                      <button onClick={() => setAddModal(true)} className="mt-2 text-sm text-blue-600 hover:underline">
-                        Add your first product →
-                      </button>
-                    )}
-                  </td>
+        <>
+          {/* Desktop table */}
+          <div className="hidden md:block rounded-2xl border border-gray-200 bg-white overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-xs text-gray-400">
+                  <th className="px-4 py-3 text-left font-medium">Product</th>
+                  <th className="px-4 py-3 text-left font-medium">Category</th>
+                  <th className="px-4 py-3 text-left font-medium">SKU</th>
+                  <th className="px-4 py-3 text-left font-medium">Cost</th>
+                  <th className="px-4 py-3 text-left font-medium">Selling</th>
+                  <th className="px-4 py-3 text-left font-medium">Margin</th>
+                  <th className="px-4 py-3 text-left font-medium">Stock</th>
+                  <th className="px-4 py-3 text-right font-medium">Actions</th>
                 </tr>
-              ) : (
-                filtered.map(p => (
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map(p => (
                   <tr key={p.id} className="hover:bg-gray-50/60 transition">
                     <td className="px-4 py-3.5">
                       <p className="font-medium text-gray-900">{p.name}</p>
@@ -362,11 +361,52 @@ export default function ProductsPage() {
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-2">
+            {filtered.map(p => (
+              <div key={p.id} className={`rounded-2xl border bg-white p-4 ${p.is_low_stock ? 'border-amber-200' : 'border-gray-200'}`}>
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                    <p className="text-xs font-mono text-gray-400">{p.sku}</p>
+                  </div>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${p.is_low_stock ? 'bg-amber-50 text-amber-600' : 'bg-green-50 text-green-600'}`}>
+                    Stock: {p.stock_quantity}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
+                  <div>
+                    <p className="text-gray-400">Cost</p>
+                    <p className="font-medium text-gray-700">₹{p.cost_price}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Selling</p>
+                    <p className="font-medium text-gray-700">₹{p.selling_price}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Margin</p>
+                    <p className="font-medium text-green-600">{p.profit_margin}%</p>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setEditModal(p)}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50">
+                    Edit
+                  </button>
+                  <button onClick={() => setDeleteConfirm(p)}
+                    className="rounded-lg border border-red-100 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50">
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {addModal && <ProductModal categories={categories} suppliers={suppliers} onClose={() => setAddModal(false)} onSave={handleAdd} saving={saving} />}

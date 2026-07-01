@@ -61,8 +61,8 @@ export default function LineItemsTable({ items, products, onItemsChange, currenc
 
   return (
     <div>
-      {/* Header */}
-      <div className="mb-2 grid grid-cols-12 gap-2 px-1 text-xs font-medium text-gray-400">
+      {/* Header — desktop only */}
+      <div className="hidden md:grid mb-2 grid-cols-12 gap-2 px-1 text-xs font-medium text-gray-400">
         <div className="col-span-4">Product</div>
         <div className="col-span-2 text-center">Qty</div>
         <div className="col-span-2 text-center">Unit Price</div>
@@ -81,94 +81,106 @@ export default function LineItemsTable({ items, products, onItemsChange, currenc
             <div key={item.id} className={`rounded-xl border p-3 transition ${
               isOverStock ? 'border-red-200 bg-red-50' : isBelowCost ? 'border-amber-200 bg-amber-50/40' : 'border-gray-200 bg-gray-50'
             }`}>
-              <div className="grid grid-cols-12 gap-2 items-start">
 
-                {/* Product */}
+              {/* Desktop layout */}
+              <div className="hidden md:grid grid-cols-12 gap-2 items-start">
                 <div className="col-span-4">
-                  <ProductSelector
-                    products={products}
-                    value={item.product?.id || ''}
-                    onChange={p => handleProduct(item.id, p)}
-                    currency={currency}
-                    onAddNew={onAddNewProduct}
-                  />
+                  <ProductSelector products={products} value={item.product?.id || ''}
+                    onChange={p => handleProduct(item.id, p)} currency={currency} onAddNew={onAddNewProduct} />
                 </div>
-
-                {/* Qty */}
                 <div className="col-span-2">
-                  <input type="number" min="1"
-                    value={item.quantity}
+                  <input type="number" min="1" value={item.quantity}
                     onChange={e => update(item.id, { quantity: Math.max(1, parseInt(e.target.value)||1) })}
-                    className={`w-full rounded-lg border px-2 py-2 text-center text-sm focus:outline-none focus:ring-2 ${
-                      isOverStock ? 'border-red-300 bg-white focus:ring-red-500/30'
-                      : 'border-gray-200 bg-white focus:ring-blue-500/30'
-                    }`}
+                    className={`w-full rounded-lg border px-2 py-2 text-center text-sm focus:outline-none focus:ring-2 ${isOverStock ? 'border-red-300 bg-white focus:ring-red-500/30' : 'border-gray-200 bg-white focus:ring-blue-500/30'}`}
                   />
                   {isOutOfStock && <p className="mt-0.5 text-center text-[10px] text-red-500">Out of stock</p>}
-                  {!isOutOfStock && isOverStock && (
-                    <p className="mt-0.5 text-center text-[10px] text-red-500">
-                      ⚠ Only {item.stockAvailable}
-                    </p>
-                  )}
+                  {!isOutOfStock && isOverStock && <p className="mt-0.5 text-center text-[10px] text-red-500">⚠ Only {item.stockAvailable}</p>}
                 </div>
-
-                {/* Unit Price — editable */}
                 <div className="col-span-2">
-                  <input type="number" min="0" step="0.01"
-                    value={item.unitPrice}
+                  <input type="number" min="0" step="0.01" value={item.unitPrice}
                     onChange={e => update(item.id, { unitPrice: parseFloat(e.target.value)||0 })}
                     className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   />
-                  {isBelowCost && (
-                    <p className="mt-0.5 text-center text-[10px] text-amber-600">
-                      ⚠ Below cost
-                    </p>
-                  )}
+                  {isBelowCost && <p className="mt-0.5 text-center text-[10px] text-amber-600">⚠ Below cost</p>}
                 </div>
-
-                {/* Discount */}
                 <div className="col-span-2">
                   <div className="flex gap-1">
-                    <select
-                      value={item.discountType}
-                      onChange={e => update(item.id, { discountType: e.target.value })}
-                      className="w-10 rounded-lg border border-gray-200 bg-white px-1 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                    >
+                    <select value={item.discountType} onChange={e => update(item.id, { discountType: e.target.value })}
+                      className="w-10 rounded-lg border border-gray-200 bg-white px-1 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30">
                       <option value="percent">%</option>
                       <option value="amount">{sym}</option>
                     </select>
-                    <input type="number" min="0" step="0.01"
-                      value={item.discountValue || ''}
-                      placeholder="0"
+                    <input type="number" min="0" step="0.01" value={item.discountValue || ''} placeholder="0"
                       onChange={e => update(item.id, { discountValue: parseFloat(e.target.value)||0 })}
                       className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                     />
                   </div>
-                  {discountAmount > 0 && (
-                    <p className="mt-0.5 text-center text-[10px] text-green-600">
-                      -{fmt(discountAmount)}
-                    </p>
-                  )}
+                  {discountAmount > 0 && <p className="mt-0.5 text-center text-[10px] text-green-600">-{fmt(discountAmount)}</p>}
                 </div>
-
-                {/* Line total */}
                 <div className="col-span-1 pt-2 text-right">
                   <p className="text-sm font-semibold text-gray-800">{fmt(lineTotal)}</p>
-                  {item.taxRate > 0 && (
-                    <p className="text-[10px] text-gray-400">+{item.taxRate}% tax</p>
-                  )}
+                  {item.taxRate > 0 && <p className="text-[10px] text-gray-400">+{item.taxRate}% tax</p>}
                 </div>
-
-                {/* Remove */}
                 <div className="col-span-1 flex justify-end">
                   <button type="button" onClick={() => remove(item.id)}
-                    className="mt-2 rounded p-1 text-gray-400 hover:text-red-500 transition"
-                    aria-label="Remove item">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                      strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                    className="mt-2 rounded p-1 text-gray-400 hover:text-red-500 transition" aria-label="Remove item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
                       <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                     </svg>
                   </button>
+                </div>
+              </div>
+
+              {/* Mobile layout — stacked */}
+              <div className="md:hidden space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <ProductSelector products={products} value={item.product?.id || ''}
+                      onChange={p => handleProduct(item.id, p)} currency={currency} onAddNew={onAddNewProduct} />
+                  </div>
+                  <button type="button" onClick={() => remove(item.id)}
+                    className="mt-1 rounded p-1 text-gray-400 hover:text-red-500 transition flex-shrink-0">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-[10px] text-gray-400 mb-1">Qty</p>
+                    <input type="number" min="1" value={item.quantity}
+                      onChange={e => update(item.id, { quantity: Math.max(1, parseInt(e.target.value)||1) })}
+                      className={`w-full rounded-lg border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 ${isOverStock ? 'border-red-300 bg-white' : 'border-gray-200 bg-white'}`}
+                    />
+                    {isOutOfStock && <p className="mt-0.5 text-[10px] text-red-500">Out of stock</p>}
+                    {!isOutOfStock && isOverStock && <p className="mt-0.5 text-[10px] text-red-500">⚠ Only {item.stockAvailable}</p>}
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400 mb-1">Unit Price</p>
+                    <input type="number" min="0" step="0.01" value={item.unitPrice}
+                      onChange={e => update(item.id, { unitPrice: parseFloat(e.target.value)||0 })}
+                      className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    />
+                    {isBelowCost && <p className="mt-0.5 text-[10px] text-amber-600">⚠ Below cost</p>}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-1 flex-1 mr-3">
+                    <select value={item.discountType} onChange={e => update(item.id, { discountType: e.target.value })}
+                      className="w-10 rounded-lg border border-gray-200 bg-white px-1 py-1.5 text-xs focus:outline-none">
+                      <option value="percent">%</option>
+                      <option value="amount">{sym}</option>
+                    </select>
+                    <input type="number" min="0" step="0.01" value={item.discountValue || ''} placeholder="Discount"
+                      onChange={e => update(item.id, { discountValue: parseFloat(e.target.value)||0 })}
+                      className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    />
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-sm font-bold text-gray-900">{fmt(lineTotal)}</p>
+                    {item.taxRate > 0 && <p className="text-[10px] text-gray-400">+{item.taxRate}% tax</p>}
+                    {discountAmount > 0 && <p className="text-[10px] text-green-600">-{fmt(discountAmount)}</p>}
+                  </div>
                 </div>
               </div>
             </div>
