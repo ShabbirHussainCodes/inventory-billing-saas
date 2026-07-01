@@ -180,8 +180,8 @@ export default function WorkspaceReports() {
       {lowStockProducts.length > 0 && (
         <div>
           <SectionTitle>Low Stock Alert</SectionTitle>
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 overflow-x-auto">
+            <table className="w-full text-sm min-w-[500px]">
               <thead>
                 <tr className="text-xs text-amber-700 border-b border-amber-200">
                   <th className="px-4 py-2.5 text-left font-medium">Product</th>

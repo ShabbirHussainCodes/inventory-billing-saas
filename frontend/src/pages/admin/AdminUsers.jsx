@@ -427,8 +427,8 @@ export default function AdminUsers() {
         </span>
       </div>
 
-      {/* Table */}
-      <div className="rounded-2xl border border-gray-200 bg-white">
+      {/* Desktop table */}
+      <div className="hidden md:block rounded-2xl border border-gray-200 bg-white">
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-xs text-gray-400">
@@ -444,75 +444,99 @@ export default function AdminUsers() {
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan={6} className="py-16 text-center text-sm text-gray-400">
-                  {isFiltered
-                    ? 'No users match your filters.'
-                    : 'No users registered yet.'}
+                  {isFiltered ? 'No users match your filters.' : 'No users registered yet.'}
                 </td>
               </tr>
             ) : (
               filtered.map((u) => (
                 <tr key={u.id} className="hover:bg-gray-50/60 transition">
-
-                  {/* User */}
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-3">
-                      {/* Avatar initials */}
                       <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-600">
                         {getInitials(u.first_name, u.last_name, u.email)}
                       </span>
                       <div>
-                        <p className="font-medium text-gray-900">
-                          {getFullName(u.first_name, u.last_name)}
-                        </p>
+                        <p className="font-medium text-gray-900">{getFullName(u.first_name, u.last_name)}</p>
                         <p className="text-xs text-gray-400 mt-0.5">{u.email}</p>
                       </div>
                     </div>
                   </td>
-
-                  {/* Role */}
-                  <td className="px-4 py-3.5">
-                    <RoleBadge role={u.role} />
-                  </td>
-
-                  {/* Business */}
-                  <td className="px-4 py-3.5 text-sm text-gray-600">
-                    {u.tenant_name}
-                  </td>
-
-                  {/* Status */}
+                  <td className="px-4 py-3.5"><RoleBadge role={u.role} /></td>
+                  <td className="px-4 py-3.5 text-sm text-gray-600">{u.tenant_name}</td>
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-1.5">
-                      <span className={`h-2 w-2 rounded-full flex-shrink-0 ${
-                        u.is_active ? 'bg-green-500' : 'bg-red-400'
-                      }`} />
-                      <span className={`text-xs font-medium ${
-                        u.is_active ? 'text-green-700' : 'text-red-600'
-                      }`}>
+                      <span className={`h-2 w-2 rounded-full flex-shrink-0 ${u.is_active ? 'bg-green-500' : 'bg-red-400'}`} />
+                      <span className={`text-xs font-medium ${u.is_active ? 'text-green-700' : 'text-red-600'}`}>
                         {u.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </div>
                   </td>
-
-                  {/* Joined */}
-                  <td className="px-4 py-3.5 text-sm text-gray-500">
-                    {formatDate(u.created_at)}
-                  </td>
-
-                  {/* Actions */}
+                  <td className="px-4 py-3.5 text-sm text-gray-500">{formatDate(u.created_at)}</td>
                   <td className="px-4 py-3.5 text-right">
-                    <ActionMenu
-                      user={u}
+                    <ActionMenu user={u}
                       onDeactivate={(user) => setConfirm({ action: 'deactivate', user })}
                       onActivate={(user) => setConfirm({ action: 'activate', user })}
                       onResetPassword={(user) => setResetModal({ user })}
                     />
                   </td>
-
                 </tr>
               ))
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-2">
+        {filtered.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-10 text-center">
+            <p className="text-sm text-gray-400">
+              {isFiltered ? 'No users match your filters.' : 'No users registered yet.'}
+            </p>
+          </div>
+        ) : (
+          filtered.map((u) => (
+            <div key={u.id} className="rounded-2xl border border-gray-200 bg-white p-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-600">
+                    {getInitials(u.first_name, u.last_name, u.email)}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{getFullName(u.first_name, u.last_name)}</p>
+                    <p className="text-xs text-gray-400 truncate">{u.email}</p>
+                  </div>
+                </div>
+                <RoleBadge role={u.role} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
+                <div>
+                  <p className="text-gray-400">Business</p>
+                  <p className="text-gray-700 font-medium truncate">{u.tenant_name || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400">Status</p>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`h-2 w-2 rounded-full flex-shrink-0 ${u.is_active ? 'bg-green-500' : 'bg-red-400'}`} />
+                    <span className={`font-medium ${u.is_active ? 'text-green-700' : 'text-red-600'}`}>
+                      {u.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-400">Joined {formatDate(u.created_at)}</p>
+                <ActionMenu user={u}
+                  onDeactivate={(user) => setConfirm({ action: 'deactivate', user })}
+                  onActivate={(user) => setConfirm({ action: 'activate', user })}
+                  onResetPassword={(user) => setResetModal({ user })}
+                />
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Confirm modal (deactivate / activate) */}

@@ -386,8 +386,8 @@ export default function AdminBusinesses() {
         </span>
       </div>
 
-      {/* Table */}
-      <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+      {/* Desktop table */}
+      <div className="hidden md:block rounded-2xl border border-gray-200 bg-white overflow-hidden">
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-xs text-gray-400">
@@ -410,16 +410,11 @@ export default function AdminBusinesses() {
 
                 return (
                   <tr key={b.id} className="hover:bg-gray-50/60 transition">
-                    {/* Business col */}
                     <td className="px-4 py-3.5">
                       <div className="flex items-start gap-2.5">
-                        {/* Status dot */}
-                        <span
-                          className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${
-                            !b.is_active ? 'bg-red-400' :
-                            isIdle ? 'bg-amber-400' : 'bg-green-500'
-                          }`}
-                        />
+                        <span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${
+                            !b.is_active ? 'bg-red-400' : isIdle ? 'bg-amber-400' : 'bg-green-500'
+                          }`} />
                         <div>
                           <p className="font-medium text-gray-900">{b.name}</p>
                           <p className="text-xs text-gray-400 mt-0.5">
@@ -428,13 +423,7 @@ export default function AdminBusinesses() {
                         </div>
                       </div>
                     </td>
-
-                    {/* Plan */}
-                    <td className="px-4 py-3.5">
-                      <PlanBadge type={b.access_type} />
-                    </td>
-
-                    {/* Activity */}
+                    <td className="px-4 py-3.5"><PlanBadge type={b.access_type} /></td>
                     <td className="px-4 py-3.5">
                       <p className="text-gray-800">{b.invoice_count} invoice{b.invoice_count !== 1 ? 's' : ''}</p>
                       {active ? (
@@ -445,25 +434,17 @@ export default function AdminBusinesses() {
                         <p className="text-xs text-gray-400 mt-0.5">no activity</p>
                       )}
                     </td>
-
-                    {/* Revenue */}
                     <td className="px-4 py-3.5">
                       {b.invoice_count > 0 ? (
-                        <p className="text-gray-800 font-medium">
-                          {formatRevenue(b.revenue, b.currency)}
-                        </p>
+                        <p className="text-gray-800 font-medium">{formatRevenue(b.revenue, b.currency)}</p>
                       ) : (
                         <p className="text-gray-400">—</p>
                       )}
                     </td>
-
-                    {/* Actions */}
                     <td className="px-4 py-3.5">
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => navigate(`/admin/businesses/${b.id}`)}
-                          className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
-                        >
+                        <button onClick={() => navigate(`/admin/businesses/${b.id}`)}
+                          className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition">
                           Enter
                         </button>
                         <ActionMenu business={b} onAction={handleAction} />
@@ -475,6 +456,72 @@ export default function AdminBusinesses() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-2">
+        {filtered.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-10 text-center">
+            <p className="text-sm text-gray-500">
+              {isFiltered ? "No businesses match your filters" : "No businesses yet"}
+            </p>
+          </div>
+        ) : (
+          filtered.map((b) => {
+            const active = b.last_active ? lastActiveLabel(b.last_active) : null
+            const isIdle = b.last_active
+              ? Date.now() - new Date(b.last_active).getTime() > 30 * 86400000
+              : true
+
+            return (
+              <div key={b.id} className="rounded-2xl border border-gray-200 bg-white p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${
+                        !b.is_active ? 'bg-red-400' : isIdle ? 'bg-amber-400' : 'bg-green-500'
+                      }`} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{b.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5 truncate">
+                        {b.owner_email} · {b.country}
+                      </p>
+                    </div>
+                  </div>
+                  <PlanBadge type={b.access_type} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
+                  <div>
+                    <p className="text-gray-400">Activity</p>
+                    <p className="text-gray-700 font-medium">{b.invoice_count} invoices</p>
+                    {active ? (
+                      <p className={isIdle ? 'text-amber-500' : 'text-green-600'}>
+                        {isIdle ? `idle ${active}` : `active ${active}`}
+                      </p>
+                    ) : (
+                      <p className="text-gray-400">no activity</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Revenue</p>
+                    <p className="text-gray-700 font-medium">
+                      {b.invoice_count > 0 ? formatRevenue(b.revenue, b.currency) : '—'}
+                    </p>
+                    <p className="text-gray-400">{b.users_count} user{b.users_count !== 1 ? 's' : ''}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <button onClick={() => navigate(`/admin/businesses/${b.id}`)}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition">
+                    Enter
+                  </button>
+                  <ActionMenu business={b} onAction={handleAction} />
+                </div>
+              </div>
+            )
+          })
+        )}
       </div>
 
       {/* Confirmation modal */}
