@@ -27,14 +27,15 @@ class Tenant(models.Model):
     # --- Access Control ---
     # Tu Super Admin se kisi ko bhi access de sakta hai
     ACCESS_TYPES = [
-        ('paid', 'Paid Subscription'),
+        ('free', 'Free Tier'),
+        ('pro', 'Pro — ₹499/mo'),
+        ('enterprise', 'Enterprise — ₹999/mo'),
         ('admin_grant', 'Granted by Admin'),
-        ('free_tier', 'Free Tier'),
     ]
     access_type = models.CharField(
         max_length=20,
         choices=ACCESS_TYPES,
-        default='free_tier'
+        default='free'
     )
     is_active = models.BooleanField(default=True)
 

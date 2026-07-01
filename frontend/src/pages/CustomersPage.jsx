@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import Layout from "../components/Layout"
-import { billingAPI } from "../services/api"
+import { billingAPI, isPlanLimitError, getPlanLimitMessage } from "../services/api"
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
@@ -185,8 +185,9 @@ export default function CustomersPage() {
       showToast("Customer added ✓")
       fetchCustomers()
       setAddModal(false)
-    } catch {
-      showToast("Failed to add customer.")
+    } catch(err) {
+      if (isPlanLimitError(err)) showToast(getPlanLimitMessage(err))
+      else showToast("Failed to add customer.")
     } finally { setSaving(false) }
   }
 

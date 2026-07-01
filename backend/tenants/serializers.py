@@ -20,5 +20,6 @@ class TenantSettingsSerializer(serializers.ModelSerializer):
             'business_website',
             'currency',
             'tax_label',
+            'access_type',  # Plan info — read only, frontend pe current plan dikhayega
         ]
-        read_only_fields = ['currency', 'tax_label']  # Founder hi badal sakta hai
+        read_only_fields = ['currency', 'tax_label', 'access_type']

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import Layout from "../components/Layout"
-import { inventoryAPI } from "../services/api"
+import { inventoryAPI, isPlanLimitError, getPlanLimitMessage } from "../services/api"
 
 // ─── Product Modal (Add + Edit) ───────────────────────────────────────────────
 
@@ -225,8 +225,9 @@ export default function ProductsPage() {
       showToast("Product added ✓")
       fetchProducts()
       setAddModal(false)
-    } catch {
-      showToast("Failed to add product.")
+    } catch(err) {
+      if (isPlanLimitError(err)) showToast(getPlanLimitMessage(err))
+      else showToast("Failed to add product.")
     } finally { setSaving(false) }
   }
 

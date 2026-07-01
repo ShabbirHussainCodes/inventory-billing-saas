@@ -13,6 +13,15 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// Plan limit error helper — 403 response mein plan_limit: true check karo
+export function isPlanLimitError(err) {
+  return err?.response?.status === 403 && err?.response?.data?.plan_limit === true
+}
+
+export function getPlanLimitMessage(err) {
+  return err?.response?.data?.error || 'Plan limit reached. Please upgrade.'
+}
+
 // Response interceptor — access token expire (15 min) ho jaaye toh
 // silently refresh karke original request retry karo. User ko pata
 // hi nahi chalega. Sirf jab refresh token bhi expired/invalid ho
@@ -155,7 +164,7 @@ export const superAdminAPI = {
   getTenants: () => api.get('/superadmin/tenants/'),
   toggleTenant: (id) => api.put(`/superadmin/tenants/${id}/toggle/`),
   grantAccess: (id) => api.put(`/superadmin/tenants/${id}/grant-access/`),
-  upgradeTenant: (id) => api.put(`/superadmin/tenants/${id}/upgrade/`),
+  upgradeTenant: (id, data) => api.put(`/superadmin/tenants/${id}/upgrade/`, data),
 
   // Users
   getUsers: () => api.get('/superadmin/users/'),

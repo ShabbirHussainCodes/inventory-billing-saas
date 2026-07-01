@@ -3,7 +3,7 @@
 // No page navigation required for common actions
 
 import { useState, useEffect } from "react"
-import { billingAPI, inventoryAPI } from "../../services/api"
+import { billingAPI, inventoryAPI, isPlanLimitError, getPlanLimitMessage } from "../../services/api"
 import LineItemsTable, { newItem, calcLine } from "./LineItemsTable"
 import InvoiceSummaryCard from "./InvoiceSummaryCard"
 
@@ -333,7 +333,8 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
       }
       onSuccess?.()
     } catch(err) {
-      setError(extractError(err, 'Failed to save draft.'))
+      if (isPlanLimitError(err)) setError(getPlanLimitMessage(err))
+      else setError(extractError(err, 'Failed to save draft.'))
     } finally { setSaving(null) }
   }
 
@@ -349,7 +350,8 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
       }
       onSuccess?.()
     } catch(err) {
-      setError(extractError(err, 'Failed to create invoice.'))
+      if (isPlanLimitError(err)) setError(getPlanLimitMessage(err))
+      else setError(extractError(err, 'Failed to create invoice.'))
     } finally { setSaving(null) }
   }
 

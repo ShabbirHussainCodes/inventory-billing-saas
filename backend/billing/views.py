@@ -29,6 +29,18 @@ def customer_list(request):
         return Response(serializer.data)
 
     elif request.method == 'POST':
+        # Feature gating — Free plan mein sirf 25 customers
+        from tenants.plan_limits import is_within_limit
+        current_count = Customer.objects.filter(tenant=tenant, is_active=True).count()
+        allowed, limit = is_within_limit(tenant, 'customers', current_count)
+        if not allowed:
+            return Response({
+                'plan_limit': True,
+                'error': f'Free plan mein sirf {limit} customers add kar sakte hain. Pro plan pe upgrade karo unlimited customers ke liye.',
+                'resource': 'customers',
+                'limit': limit,
+            }, status=status.HTTP_403_FORBIDDEN)
+
         serializer = CustomerSerializer(data=request.data)
         if serializer.is_valid():
             customer = serializer.save(tenant=tenant)
@@ -108,6 +120,22 @@ def invoice_list(request):
         return Response(serializer.data)
 
     elif request.method == 'POST':
+        # Feature gating — Free plan mein sirf 10 invoices/month
+        from tenants.plan_limits import is_within_limit
+        from django.utils import timezone
+        month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        monthly_count = Invoice.objects.filter(
+            tenant=tenant, created_at__gte=month_start
+        ).count()
+        allowed, limit = is_within_limit(tenant, 'invoices_per_month', monthly_count)
+        if not allowed:
+            return Response({
+                'plan_limit': True,
+                'error': f'Free plan mein sirf {limit} invoices/month ban sakte hain. Pro plan pe upgrade karo unlimited invoices ke liye.',
+                'resource': 'invoices_per_month',
+                'limit': limit,
+            }, status=status.HTTP_403_FORBIDDEN)
+
         serializer = InvoiceCreateSerializer(
             data=request.data,
             context={

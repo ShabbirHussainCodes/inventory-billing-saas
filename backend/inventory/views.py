@@ -164,6 +164,18 @@ def product_list(request):
         return Response(serializer.data)
 
     elif request.method == 'POST':
+        # Feature gating — Free plan mein sirf 20 products
+        from tenants.plan_limits import is_within_limit
+        current_count = Product.objects.filter(tenant=tenant, is_active=True).count()
+        allowed, limit = is_within_limit(tenant, 'products', current_count)
+        if not allowed:
+            return Response({
+                'plan_limit': True,
+                'error': f'Free plan mein sirf {limit} products add kar sakte hain. Pro plan pe upgrade karo unlimited products ke liye.',
+                'resource': 'products',
+                'limit': limit,
+            }, status=status.HTTP_403_FORBIDDEN)
+
         # SKU duplicate check — explicit, kyunki 'tenant' field serializer mein
         # nahi hai isliye DRF automatically unique_together validate nahi kar
         # sakta. Iske bina IntegrityError crash hota tha (500 error).

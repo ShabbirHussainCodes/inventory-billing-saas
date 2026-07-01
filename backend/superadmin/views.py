@@ -370,10 +370,21 @@ def upgrade_tenant(request, tenant_id):
     except Tenant.DoesNotExist:
         return Response({'error': 'Tenant not found.'}, status=404)
 
-    tenant.access_type = 'paid'
+    # Plan choose karo — free/pro/enterprise/admin_grant
+    new_plan = request.data.get('plan', 'pro')
+    valid_plans = ['free', 'pro', 'enterprise', 'admin_grant']
+    if new_plan not in valid_plans:
+        return Response({'error': f'Invalid plan. Choose from: {", ".join(valid_plans)}'}, status=400)
+
+    tenant.access_type = new_plan
     tenant.is_active = True
     tenant.save()
-    return Response({'message': f'{tenant.name} upgraded to paid successfully.'})
+
+    plan_labels = {'free': 'Free', 'pro': 'Pro', 'enterprise': 'Enterprise', 'admin_grant': 'Admin Granted'}
+    return Response({
+        'message': f'{tenant.name} plan updated to {plan_labels[new_plan]} successfully.',
+        'access_type': new_plan,
+    })
 
 
 @api_view(['GET'])

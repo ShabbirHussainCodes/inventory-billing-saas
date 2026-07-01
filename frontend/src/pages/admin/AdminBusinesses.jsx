@@ -30,9 +30,10 @@ function lastActiveLabel(isoString) {
 
 function PlanBadge({ type }) {
   const cfg = {
-    paid:        { label: 'Paid',    cls: 'bg-blue-50 text-blue-600' },
-    free_tier:   { label: 'Free',    cls: 'bg-gray-100 text-gray-600' },
-    admin_grant: { label: 'Granted', cls: 'bg-purple-50 text-purple-600' },
+    free:         { label: 'Free',       cls: 'bg-gray-100 text-gray-600' },
+    pro:          { label: 'Pro',         cls: 'bg-blue-50 text-blue-600' },
+    enterprise:   { label: 'Enterprise', cls: 'bg-purple-50 text-purple-600' },
+    admin_grant:  { label: 'Granted',    cls: 'bg-green-50 text-green-600' },
   }[type] || { label: type, cls: 'bg-gray-100 text-gray-500' }
 
   return (
@@ -128,7 +129,7 @@ function ActionMenu({ business, onAction }) {
               onClick={() => { onAction('upgrade', business); setOpen(false) }}
               className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition"
             >
-              Upgrade to paid
+              Change Plan
             </button>
           )}
         </div>
@@ -295,8 +296,13 @@ export default function AdminBusinesses() {
         await superAdminAPI.grantAccess(business.id)
         setToast(`Free access granted to ${business.name} ✓`)
       } else if (action === 'upgrade') {
-        await superAdminAPI.upgradeTenant(business.id)
-        setToast(`${business.name} upgraded to Paid ✓`)
+        const plan = window.prompt(
+          `Change plan for "${business.name}":\n\nEnter: free / pro / enterprise / admin_grant`,
+          business.access_type || 'pro'
+        )
+        if (!plan) return
+        await superAdminAPI.upgradeTenant(business.id, { plan })
+        setToast(`${business.name} plan updated to ${plan} ✓`)
       }
       fetchBusinesses()
     } catch {
@@ -366,6 +372,10 @@ export default function AdminBusinesses() {
           className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
         >
           <option value="all">All plans</option>
+          <option value="free">Free</option>
+          <option value="pro">Pro</option>
+          <option value="enterprise">Enterprise</option>
+          <option value="admin_grant">Granted</option>
           <option value="paid">Paid</option>
           <option value="free_tier">Free</option>
           <option value="admin_grant">Granted</option>
