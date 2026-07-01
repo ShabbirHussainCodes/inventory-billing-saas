@@ -27,3 +27,42 @@ def business_settings(request):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([])  # Public — Telegram khud call karta hai, koi login nahi hota
+def telegram_webhook(request):
+    """
+    Telegram se aane wale saare updates yahan aate hain.
+    Jab koi user bot ko /start ya koi bhi message bhejta hai, Telegram
+    yeh URL call karta hai. Hum reply mein unka Chat ID bhej dete hain —
+    isse client ko kabhi bot token dekhna/dena nahi padta.
+    """
+    from django.conf import settings
+    from .telegram import send_telegram_message
+
+    data = request.data
+    message = data.get('message', {})
+    chat = message.get('chat', {})
+    chat_id = chat.get('id')
+    text = message.get('text', '')
+
+    if not chat_id:
+        # Koi valid message nahi tha — Telegram ko 200 hi bhejo,
+        # warna woh baar baar retry karega
+        return Response({'ok': True})
+
+    if text.strip().lower() == '/start':
+        reply = (
+            "👋 <b>Welcome to BillingMars Reports!</b>\n\n"
+            f"Your Telegram Chat ID is:\n<code>{chat_id}</code>\n\n"
+            "Copy this and paste it in:\n"
+            "BillingMars → Settings → Telegram Chat ID\n\n"
+            "Once saved, tap 'Close Day' on your Dashboard anytime "
+            "to get your daily collection report right here."
+        )
+        send_telegram_message(chat_id, reply)
+
+    # Koi aur message ho toh abhi kuch nahi karte — future mein
+    # yahan aur commands add ho sakte hain
+    return Response({'ok': True})

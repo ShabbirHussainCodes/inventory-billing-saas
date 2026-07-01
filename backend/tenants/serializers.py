@@ -18,6 +18,7 @@ class TenantSettingsSerializer(serializers.ModelSerializer):
             'business_email',
             'business_address',
             'business_website',
+            'telegram_chat_id',
             'currency',
             'tax_label',
             'access_type',  # Plan info — read only, frontend pe current plan dikhayega

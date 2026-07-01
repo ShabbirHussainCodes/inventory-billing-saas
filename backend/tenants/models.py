@@ -47,6 +47,9 @@ class Tenant(models.Model):
     business_address = models.TextField(blank=True, default='')
     business_website = models.CharField(max_length=255, blank=True, default='')
 
+    # --- Telegram Daily Report ---
+    telegram_chat_id = models.CharField(max_length=50, blank=True, default='')
+
     # --- Timestamps ---
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

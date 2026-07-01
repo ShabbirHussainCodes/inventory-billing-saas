@@ -13,6 +13,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState({
     name: "", gst_number: "", business_phone: "",
     business_email: "", business_address: "", business_website: "",
+    telegram_chat_id: "",
   })
   const [plan, setPlan] = useState('free')
   const [loading, setLoading] = useState(true)
@@ -151,6 +152,26 @@ export default function SettingsPage() {
             <button onClick={handleSave} disabled={saving}
               className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 transition disabled:opacity-50">
               {saving ? "Saving…" : "Save Settings"}
+            </button>
+          </div>
+        </div>
+
+        {/* Telegram Daily Report */}
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-3">
+          <p className="text-sm font-medium text-gray-900">Telegram Daily Report</p>
+          <p className="text-xs text-gray-400">
+            Get your day's collection and profit sent to Telegram with one click.
+          </p>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Telegram Chat ID</label>
+            <input name="telegram_chat_id" value={form.telegram_chat_id} onChange={handle}
+              placeholder="e.g. 987654321"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+          </div>
+          <div className="pt-1">
+            <button onClick={handleSave} disabled={saving}
+              className="rounded-lg border border-gray-200 px-5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition disabled:opacity-50">
+              {saving ? "Saving…" : "Save Telegram ID"}
             </button>
           </div>
         </div>

@@ -5,6 +5,7 @@ const BASE_URL = 'https://billingmars-api.onrender.com/api'
 const api = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
+  timeout: 60000, // 60s — Render free tier cold start ~50s tak le sakta hai
 })
 
 api.interceptors.request.use((config) => {
@@ -145,6 +146,7 @@ export const billingAPI = {
   getInvoice: (id) => api.get(`/billing/invoices/${id}/`),
   getSummary: () => api.get('/billing/summary/'),
   updateInvoiceStatus: (id, status) => api.patch(`/billing/invoices/${id}/status/`, { status }),
+  closeDay: () => api.post('/billing/close-day/'),
   getInvoiceDetail: (id) => api.get(`/billing/invoices/${id}/`),
   updateInvoice: (id, data) => api.put(`/billing/invoices/${id}/`, data),
   deleteInvoice: (id) => api.delete(`/billing/invoices/${id}/`),

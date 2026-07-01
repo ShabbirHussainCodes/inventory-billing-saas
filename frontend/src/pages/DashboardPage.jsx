@@ -67,29 +67,62 @@ export default function DashboardPage() {
   const [lowStock, setLowStock] = useState([])
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [closingDay, setClosingDay] = useState(false)
+  const [toast, setToast] = useState("")
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [summaryRes, lowStockRes, invoicesRes] = await Promise.all([
-          billingAPI.getSummary(),
-          inventoryAPI.getLowStock(),
-          billingAPI.getInvoices(),
-        ])
-        setSummary(summaryRes.data)
-        setLowStock(lowStockRes.data.products || [])
-        setInvoices(invoicesRes.data.slice(0, 5))
-      } catch (err) {
-        console.error("Dashboard fetch error:", err)
-      } finally {
-        setLoading(false)
-      }
+  const fetchData = async () => {
+    setLoading(true)
+    setError("")
+    try {
+      const [summaryRes, lowStockRes, invoicesRes] = await Promise.all([
+        billingAPI.getSummary(),
+        inventoryAPI.getLowStock(),
+        billingAPI.getInvoices(),
+      ])
+      setSummary(summaryRes.data)
+      setLowStock(lowStockRes.data.products || [])
+      setInvoices(invoicesRes.data.slice(0, 5))
+    } catch (err) {
+      console.error("Dashboard fetch error:", err)
+      setError("Could not load dashboard. Check your connection and try again.")
+    } finally {
+      setLoading(false)
     }
-    fetchData()
-  }, [])
+  }
+
+  useEffect(() => { fetchData() }, [])
+
+  const handleCloseDay = async () => {
+    setClosingDay(true)
+    try {
+      await billingAPI.closeDay()
+      setToast("Daily report sent to Telegram ✓")
+    } catch (err) {
+      setToast(err?.response?.data?.error || "Failed to send report. Check Telegram settings.")
+    } finally {
+      setClosingDay(false)
+      setTimeout(() => setToast(""), 4000)
+    }
+  }
 
   if (loading) {
     return <Layout><DashboardSkeleton /></Layout>
+  }
+
+  if (error) {
+    return (
+      <Layout>
+        <div className="flex flex-col items-center justify-center min-h-[40vh] rounded-2xl border border-red-100 bg-red-50 text-center p-8">
+          <p className="text-sm font-medium text-red-600 mb-1">Failed to load dashboard</p>
+          <p className="text-xs text-red-400 mb-4">{error}</p>
+          <button onClick={fetchData}
+            className="rounded-lg border border-red-200 bg-white px-4 py-1.5 text-sm text-red-600 hover:bg-red-50 transition">
+            Try again
+          </button>
+        </div>
+      </Layout>
+    )
   }
 
   const currency = summary?.currency || "INR"
@@ -107,13 +140,27 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Quick action */}
-        <button
-          onClick={() => navigate("/invoices")}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition"
-        >
-          + Create Invoice
-        </button>
+        {/* Quick actions */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCloseDay}
+            disabled={closingDay}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+              strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+              <path d="M21.5 12H16l-2 3h-4l-2-3H2.5"/>
+              <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
+            </svg>
+            {closingDay ? "Sending…" : "Close Day"}
+          </button>
+          <button
+            onClick={() => navigate("/invoices")}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition"
+          >
+            + Create Invoice
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -245,6 +292,12 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm text-white shadow-lg">
+          {toast}
+        </div>
+      )}
     </Layout>
   )
 }

@@ -284,3 +284,64 @@ def invoice_summary(request):
         'currency': tenant.currency,
         'tax_label': tenant.tax_label,
     })
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def close_day(request):
+    """
+    Aaj ka collection + profit calculate karo aur Telegram pe bhejo.
+    Manual trigger — "Close Day" button se call hota hai.
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    if not tenant.telegram_chat_id:
+        return Response({
+            'error': 'Telegram Chat ID not set. Add it in Settings first.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    from django.db.models import Sum, Count
+    from django.db.models.functions import Coalesce
+    from django.utils import timezone
+    from decimal import Decimal
+    from tenants.telegram import send_telegram_message, build_daily_summary_message
+
+    today = timezone.now().date()
+    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = timezone.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    # Sirf aaj ke invoices — draft exclude, sirf sent/paid count hone chahiye
+    agg = Invoice.objects.filter(
+        tenant=tenant,
+        created_at__gte=today_start,
+        created_at__lte=today_end,
+        status__in=['sent', 'paid'],
+    ).aggregate(
+        subtotal=Coalesce(Sum('subtotal'), Decimal('0.00')),
+        tax_amount=Coalesce(Sum('tax_amount'), Decimal('0.00')),
+        total_amount=Coalesce(Sum('total_amount'), Decimal('0.00')),
+        total_profit=Coalesce(Sum('total_profit'), Decimal('0.00')),
+        invoice_count=Count('id'),
+    )
+
+    message = build_daily_summary_message(
+        tenant=tenant,
+        date=today,
+        subtotal=agg['subtotal'],
+        tax_amount=agg['tax_amount'],
+        total_amount=agg['total_amount'],
+        total_profit=agg['total_profit'],
+        invoice_count=agg['invoice_count'],
+        currency=tenant.currency,
+    )
+
+    success, error = send_telegram_message(tenant.telegram_chat_id, message)
+
+    if success:
+        return Response({
+            'message': 'Daily report sent to Telegram successfully.',
+            'summary': agg,
+        })
+    else:
+        return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
