@@ -18,27 +18,68 @@ def platform_stats(request):
 
     now = timezone.now()
 
+    # Plan pricing — Razorpay aane tak yahan se MRR calculate hoga
+    # Jab Razorpay aayega, actual payment records se calculate karenge
+    PLAN_PRICES = {
+        'pro':        499,
+        'enterprise': 999,
+        'free':       0,
+        'admin_grant': 0,   # Granted = no charge abhi
+    }
+
     # Single-pass aggregation — koi N+1 nahi
-    total_tenants = Tenant.objects.count()
-    active_tenants = Tenant.objects.filter(is_active=True).count()
-    total_users = CustomUser.objects.exclude(role='super_admin').count()
-    paid_tenants = Tenant.objects.filter(access_type='paid').count()
-    free_tenants = Tenant.objects.filter(access_type='free_tier').count()
-    admin_grant = Tenant.objects.filter(access_type='admin_grant').count()
-    new_this_month = Tenant.objects.filter(
+    total_tenants   = Tenant.objects.count()
+    active_tenants  = Tenant.objects.filter(is_active=True).count()
+    total_users     = CustomUser.objects.exclude(role='super_admin').count()
+    new_this_month  = Tenant.objects.filter(
         created_at__year=now.year,
         created_at__month=now.month
     ).count()
 
+    # Plan-wise counts (naye names)
+    plan_counts = {
+        'free':        Tenant.objects.filter(access_type='free').count(),
+        'pro':         Tenant.objects.filter(access_type='pro').count(),
+        'enterprise':  Tenant.objects.filter(access_type='enterprise').count(),
+        'admin_grant': Tenant.objects.filter(access_type='admin_grant').count(),
+    }
+
+    # Estimated MRR — Pro × ₹499 + Enterprise × ₹999
+    # "Estimated" kyunki abhi Razorpay nahi hai — actual payments track nahi ho rahe
+    estimated_mrr = (
+        plan_counts['pro'] * PLAN_PRICES['pro'] +
+        plan_counts['enterprise'] * PLAN_PRICES['enterprise']
+    )
+
+    # Platform revenue = is mahine tak ka total estimated revenue
+    # (cumulative, MRR nahi — yeh sabhi paid months ka total hoga)
+    # Abhi sirf current month ka estimate hai (Razorpay aane tak)
+    platform_revenue = estimated_mrr  # Will be replaced with actual payment records
+
     return Response({
-        'total_tenants': total_tenants,
-        'active_tenants': active_tenants,
-        'suspended_tenants': total_tenants - active_tenants,
-        'total_users': total_users,
-        'paid_tenants': paid_tenants,
-        'free_tenants': free_tenants,
-        'admin_grant_tenants': admin_grant,
-        'new_this_month': new_this_month,
+        'total_tenants':      total_tenants,
+        'active_tenants':     active_tenants,
+        'suspended_tenants':  total_tenants - active_tenants,
+        'total_users':        total_users,
+        'new_this_month':     new_this_month,
+
+        # Plan breakdown
+        'plan_counts':        plan_counts,
+
+        # Legacy fields (backward compatible — frontend pe purana code na toote)
+        'paid_tenants':       plan_counts['pro'] + plan_counts['enterprise'],
+        'free_tenants':       plan_counts['free'],
+        'admin_grant_tenants': plan_counts['admin_grant'],
+
+        # MRR + Revenue
+        'estimated_mrr':      estimated_mrr,
+        'platform_revenue':   platform_revenue,
+        'mrr_breakdown': {
+            'pro_count':        plan_counts['pro'],
+            'pro_price':        PLAN_PRICES['pro'],
+            'enterprise_count': plan_counts['enterprise'],
+            'enterprise_price': PLAN_PRICES['enterprise'],
+        },
     })
 
 
