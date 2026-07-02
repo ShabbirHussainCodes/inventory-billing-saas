@@ -969,11 +969,16 @@ def permanent_delete_tenant(request, tenant_id):
     from users.models import CustomUser
     from .models import TenantDeletionLog
 
+    # owner_email Tenant model ka real field nahi hai — tenant_list view mein
+    # yeh sirf Subquery annotation hai. Yahan directly CustomUser se nikalo.
+    owner = CustomUser.objects.filter(tenant=tenant, role='business_owner').first()
+    owner_email = owner.email if owner else ''
+
     # Delete se PEHLE snapshot lo — counts, naam, email — sab save karo
     snapshot = TenantDeletionLog.objects.create(
         tenant_id_snapshot=tenant.id,
         tenant_name=tenant.name,
-        owner_email=tenant.owner_email or '',
+        owner_email=owner_email,
         products_count=Product.objects.filter(tenant=tenant).count(),
         customers_count=Customer.objects.filter(tenant=tenant).count(),
         invoices_count=Invoice.objects.filter(tenant=tenant).count(),
