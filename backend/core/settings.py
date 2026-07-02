@@ -13,6 +13,10 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 # Telegram Bot — Daily Report feature. Token Render env var mein set karo,
 # yahan hardcode nahi karna (public repo mein leak ho sakta hai).
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
+
+# Cloudflare Turnstile — bot protection on registration.
+# Secret key Render env var mein set karo, yahan hardcode nahi.
+TURNSTILE_SECRET_KEY = os.getenv('TURNSTILE_SECRET_KEY', '')
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
 

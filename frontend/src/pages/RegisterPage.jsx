@@ -1,6 +1,11 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { authAPI } from "../services/api"
+import TurnstileWidget from "../components/TurnstileWidget"
+
+// ⚠️ Site Key public hai, code mein rakhna safe hai (Secret Key kabhi nahi).
+// Yeh Cloudflare Turnstile dashboard se milta hai.
+const TURNSTILE_SITE_KEY = "0x4AAAAAADupN__UEXOxNItP"
 
 export default function RegisterPage() {
   const navigate = useNavigate()
@@ -12,6 +17,7 @@ export default function RegisterPage() {
   })
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [turnstileToken, setTurnstileToken] = useState(null)
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -19,17 +25,21 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (!turnstileToken) {
+      setError("Please complete the verification check below.")
+      return
+    }
     setLoading(true)
     setError("")
     try {
-      const response = await authAPI.register(formData)
+      const response = await authAPI.register({ ...formData, turnstile_token: turnstileToken })
       const { tokens, user } = response.data
       localStorage.setItem("access_token", tokens.access)
       localStorage.setItem("refresh_token", tokens.refresh)
       localStorage.setItem("user", JSON.stringify(user))
       navigate("/dashboard")
     } catch (err) {
-      setError("Registration failed. Please check all fields.")
+      setError(err?.response?.data?.error || "Registration failed. Please check all fields.")
     } finally {
       setLoading(false)
     }
@@ -172,9 +182,18 @@ export default function RegisterPage() {
             </select>
           </div>
 
+          {/* Bot verification */}
+          <div className="flex justify-center py-1">
+            <TurnstileWidget
+              siteKey={TURNSTILE_SITE_KEY}
+              onVerify={(token) => setTurnstileToken(token)}
+              onExpire={() => setTurnstileToken(null)}
+            />
+          </div>
+
           {/* Submit */}
           <button
-            type="submit" disabled={loading}
+            type="submit" disabled={loading || !turnstileToken}
             className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-50"
           >
             {loading ? "Creating account..." : "Create Account"}

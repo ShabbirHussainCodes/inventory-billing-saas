@@ -23,6 +23,14 @@ def get_tokens_for_user(user):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_view(request):
+    # Bot protection — Turnstile token verify karo user create karne se pehle
+    from .turnstile import verify_turnstile_token
+    turnstile_token = request.data.get('turnstile_token')
+    remote_ip = request.META.get('REMOTE_ADDR')
+    is_valid, error_msg = verify_turnstile_token(turnstile_token, remote_ip)
+    if not is_valid:
+        return Response({'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
+
     serializer = UserRegistrationSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.save()
