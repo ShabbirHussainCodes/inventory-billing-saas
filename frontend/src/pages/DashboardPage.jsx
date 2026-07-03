@@ -66,6 +66,7 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState(null)
   const [lowStock, setLowStock] = useState([])
   const [invoices, setInvoices] = useState([])
+  const [cashflow, setCashflow] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [closingDay, setClosingDay] = useState(false)
@@ -75,14 +76,16 @@ export default function DashboardPage() {
     setLoading(true)
     setError("")
     try {
-      const [summaryRes, lowStockRes, invoicesRes] = await Promise.all([
+      const [summaryRes, lowStockRes, invoicesRes, cashflowRes] = await Promise.all([
         billingAPI.getSummary(),
         inventoryAPI.getLowStock(),
         billingAPI.getInvoices(),
+        billingAPI.getCashflow(),
       ])
       setSummary(summaryRes.data)
       setLowStock(lowStockRes.data.products || [])
       setInvoices(invoicesRes.data.slice(0, 5))
+      setCashflow(cashflowRes.data)
     } catch (err) {
       console.error("Dashboard fetch error:", err)
       setError("Could not load dashboard. Check your connection and try again.")
@@ -189,6 +192,57 @@ export default function DashboardPage() {
           sub="Collected"
         />
       </div>
+
+      {/* Cashflow — Outstanding + Overdue */}
+      {cashflow && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+          <div className="rounded-2xl border border-gray-200 bg-white p-5">
+            <p className="text-xs text-gray-400 mb-1">Outstanding (Sent, Unpaid)</p>
+            <p className="text-2xl font-semibold text-blue-600">
+              {summary?.currency || '₹'} {parseFloat(cashflow.outstanding_amount).toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              {cashflow.outstanding_count} invoice{cashflow.outstanding_count !== 1 ? 's' : ''} awaiting payment
+            </p>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-white p-5">
+            <p className="text-xs text-gray-400 mb-1">Overdue</p>
+            <p className={`text-2xl font-semibold ${cashflow.overdue_count > 0 ? 'text-red-600' : 'text-gray-300'}`}>
+              {summary?.currency || '₹'} {parseFloat(cashflow.overdue_amount).toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              {cashflow.overdue_count > 0
+                ? `${cashflow.overdue_count} invoice${cashflow.overdue_count !== 1 ? 's' : ''} past due date`
+                : 'Nothing overdue'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Overdue invoices — follow-up list */}
+      {cashflow?.overdue_invoices?.length > 0 && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 p-5 mb-4">
+          <p className="text-sm font-medium text-red-700 mb-3">⚠ Needs Follow-up</p>
+          <div className="space-y-2">
+            {cashflow.overdue_invoices.map((inv) => (
+              <div key={inv.id}
+                onClick={() => navigate(`/invoices/${inv.id}`)}
+                className="flex items-center justify-between rounded-xl bg-white border border-red-100 px-3 py-2.5 cursor-pointer hover:bg-red-50/50 transition">
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{inv.customer_name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5 font-mono">{inv.invoice_number}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-red-600">
+                    {summary?.currency || '₹'} {parseFloat(inv.total_amount).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-gray-400">{inv.days_overdue} day{inv.days_overdue !== 1 ? 's' : ''} overdue</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Low Stock + Recent Invoices */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

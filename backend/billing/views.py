@@ -345,3 +345,66 @@ def close_day(request):
         })
     else:
         return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def cashflow_summary(request):
+    """
+    Cashflow visibility — abhi "prediction" nahi hai, yeh real-time
+    tracking hai: kitna paisa outstanding hai (sent, unpaid) aur
+    kitna overdue hai (due_date nikal chuki, abhi bhi unpaid).
+
+    True forecasting (future revenue predict karna) ke liye real
+    payment-behavior history chahiye — woh ab collect hona shuru
+    hoga jab se Mark as Paid feature hai, par abhi meaningful
+    pattern banne mein time lagega.
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    from django.db.models import Sum, Count
+    from django.db.models.functions import Coalesce
+    from decimal import Decimal
+    from django.utils import timezone
+
+    today = timezone.now().date()
+
+    # Outstanding — sab "sent" invoices jo abhi paid nahi hain
+    outstanding_agg = Invoice.objects.filter(
+        tenant=tenant, status='sent'
+    ).aggregate(
+        outstanding_amount=Coalesce(Sum('total_amount'), Decimal('0.00')),
+        outstanding_count=Count('id'),
+    )
+
+    # Overdue — sent + due_date nikal chuki
+    overdue_qs = Invoice.objects.filter(
+        tenant=tenant, status='sent',
+        due_date__isnull=False, due_date__lt=today,
+    )
+    overdue_agg = overdue_qs.aggregate(
+        overdue_amount=Coalesce(Sum('total_amount'), Decimal('0.00')),
+        overdue_count=Count('id'),
+    )
+
+    # Top 10 overdue invoices — follow-up ke liye specific list
+    overdue_list = overdue_qs.select_related('customer').order_by('due_date')[:10]
+    overdue_data = [{
+        'id': str(inv.id),
+        'invoice_number': inv.invoice_number,
+        'customer_name': inv.customer.name if inv.customer else '—',
+        'total_amount': inv.total_amount,
+        'due_date': inv.due_date.isoformat() if inv.due_date else None,
+        'days_overdue': (today - inv.due_date).days if inv.due_date else 0,
+    } for inv in overdue_list]
+
+    return Response({
+        'outstanding_amount': outstanding_agg['outstanding_amount'],
+        'outstanding_count': outstanding_agg['outstanding_count'],
+        'overdue_amount': overdue_agg['overdue_amount'],
+        'overdue_count': overdue_agg['overdue_count'],
+        'overdue_invoices': overdue_data,
+        'currency': tenant.currency,
+    })
