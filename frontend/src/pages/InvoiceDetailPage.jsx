@@ -47,17 +47,17 @@ export default function InvoiceDetailPage() {
   const [invoice, setInvoice] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [markingPaid, setMarkingPaid] = useState(false)
+  const [statusUpdating, setStatusUpdating] = useState(false)
 
-  const handleMarkAsPaid = async () => {
-    setMarkingPaid(true)
+  const handleStatusChange = async (newStatus) => {
+    setStatusUpdating(true)
     try {
-      await billingAPI.updateInvoiceStatus(invoice.id, 'paid')
-      setInvoice(prev => ({ ...prev, status: 'paid' }))
+      await billingAPI.updateInvoiceStatus(invoice.id, newStatus)
+      setInvoice(prev => ({ ...prev, status: newStatus }))
     } catch (err) {
-      alert(err?.response?.data?.error || 'Could not mark invoice as paid. Please try again.')
+      alert(err?.response?.data?.error || 'Could not update invoice status. Please try again.')
     } finally {
-      setMarkingPaid(false)
+      setStatusUpdating(false)
     }
   }
 
@@ -132,9 +132,15 @@ export default function InvoiceDetailPage() {
           </button>
         )}
         {invoice.status === 'sent' && (
-          <button onClick={handleMarkAsPaid} disabled={markingPaid}
+          <button onClick={() => handleStatusChange('paid')} disabled={statusUpdating}
             className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100 transition disabled:opacity-50">
-            {markingPaid ? 'Marking…' : '✓ Mark as Paid'}
+            {statusUpdating ? 'Marking…' : '✓ Mark as Paid'}
+          </button>
+        )}
+        {invoice.status === 'paid' && (
+          <button onClick={() => handleStatusChange('sent')} disabled={statusUpdating}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition disabled:opacity-50">
+            {statusUpdating ? 'Reverting…' : '↺ Revert to Sent'}
           </button>
         )}
         <button onClick={handleWhatsAppShare}
