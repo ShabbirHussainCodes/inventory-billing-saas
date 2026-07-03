@@ -47,6 +47,19 @@ export default function InvoiceDetailPage() {
   const [invoice, setInvoice] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [markingPaid, setMarkingPaid] = useState(false)
+
+  const handleMarkAsPaid = async () => {
+    setMarkingPaid(true)
+    try {
+      await billingAPI.updateInvoiceStatus(invoice.id, 'paid')
+      setInvoice(prev => ({ ...prev, status: 'paid' }))
+    } catch (err) {
+      alert(err?.response?.data?.error || 'Could not mark invoice as paid. Please try again.')
+    } finally {
+      setMarkingPaid(false)
+    }
+  }
 
   // Share invoice summary on WhatsApp — no paid API, uses wa.me link
   const handleWhatsAppShare = () => {
@@ -118,6 +131,12 @@ export default function InvoiceDetailPage() {
             Edit Invoice
           </button>
         )}
+        {invoice.status === 'sent' && (
+          <button onClick={handleMarkAsPaid} disabled={markingPaid}
+            className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100 transition disabled:opacity-50">
+            {markingPaid ? 'Marking…' : '✓ Mark as Paid'}
+          </button>
+        )}
         <button onClick={handleWhatsAppShare}
           className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100 transition">
           <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden="true">
@@ -152,7 +171,7 @@ export default function InvoiceDetailPage() {
                 <p className="text-xs text-gray-500">{invoice.business_website}</p>
               )}
               {invoice.business_address && (
-                <p className="text-xs text-gray-500 max-w-xs">{invoice.business_address}</p>
+                <p className="text-xs text-gray-500">{invoice.business_address}</p>
               )}
             </div>
           </div>
@@ -178,7 +197,7 @@ export default function InvoiceDetailPage() {
                 <p className="text-xs text-gray-500">{invoice.customer_email}</p>
               )}
               {invoice.customer_address && (
-                <p className="text-xs text-gray-500 max-w-xs">{invoice.customer_address}</p>
+                <p className="text-xs text-gray-500">{invoice.customer_address}</p>
               )}
               {invoice.customer_tax_number && (
                 <p className="text-xs text-gray-500">GST: {invoice.customer_tax_number}</p>
