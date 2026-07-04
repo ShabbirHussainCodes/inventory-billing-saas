@@ -408,3 +408,159 @@ def cashflow_summary(request):
         'overdue_invoices': overdue_data,
         'currency': tenant.currency,
     })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_business_brief(request):
+    """
+    v1 Decision Engine — 3 rules-based categories, max 3 suggestions
+    returned (highest priority first). Manual trigger for now (no
+    Celery scheduling yet — that's a Phase 12 item).
+
+    NOTE on thresholds below (dead stock days, etc.) — these are
+    reasonable starting defaults, NOT proven-optimal numbers. They
+    should become tenant-configurable later; hardcoded here for v1.
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    from django.db.models import Max, F
+    from django.utils import timezone
+    from inventory.models import Product, StockMovement
+    from .models import BusinessSuggestion
+    from tenants.telegram import send_telegram_message
+
+    today = timezone.now().date()
+    now = timezone.now()
+    sym = {'INR': '₹', 'USD': '$', 'AED': 'AED ', 'GBP': '£', 'EUR': '€'}.get(tenant.currency, tenant.currency + ' ')
+    suggestions = []
+
+    # ── Rule 1: Restock Needed (reuses existing is_low_stock logic) ──
+    low_stock_products = Product.objects.filter(
+        tenant=tenant, is_active=True, stock_quantity__lte=F('reorder_point')
+    )
+    for p in low_stock_products:
+        suggestions.append({
+            'category': 'restock',
+            'title': f'Restock {p.name}',
+            'detail': f'{p.stock_quantity} units left, reorder point is {p.reorder_point}.',
+            'priority_score': 100 - p.stock_quantity,  # kam stock = zyada urgent
+            'related_product_id': p.id,
+        })
+
+    # ── Rule 2: Dead Stock — no 'out' movement in last 30 days, stock > 0 ──
+    # 30 days = reasonable default, not a proven threshold. Configurable later.
+    DEAD_STOCK_DAYS = 30
+    cutoff = now - timezone.timedelta(days=DEAD_STOCK_DAYS)
+    candidates = Product.objects.filter(tenant=tenant, is_active=True, stock_quantity__gt=0)
+    for p in candidates:
+        last_sale = StockMovement.objects.filter(
+            tenant=tenant, product=p, movement_type='out'
+        ).aggregate(last=Max('created_at'))['last']
+        if last_sale is None or last_sale < cutoff:
+            locked_value = p.stock_quantity * p.cost_price
+            days_idle = (now - last_sale).days if last_sale else None
+            suggestions.append({
+                'category': 'dead_stock',
+                'title': f'{p.name} — not selling',
+                'detail': (
+                    f'No sales in {days_idle} days, {sym}{locked_value:,.2f} locked in stock.'
+                    if days_idle is not None else
+                    f'Never sold, {sym}{locked_value:,.2f} locked in stock.'
+                ),
+                'priority_score': int(locked_value),  # zyada locked value = zyada urgent
+                'related_product_id': p.id,
+            })
+
+    # ── Rule 3: Overdue Collection (reuses cashflow_summary logic) ──
+    overdue_invoices = Invoice.objects.filter(
+        tenant=tenant, status='sent', due_date__isnull=False, due_date__lt=today,
+    ).select_related('customer').order_by('due_date')
+    for inv in overdue_invoices:
+        days_overdue = (today - inv.due_date).days
+        suggestions.append({
+            'category': 'overdue',
+            'title': f'Collect from {inv.customer.name if inv.customer else "customer"}',
+            'detail': f'{sym}{inv.total_amount:,.2f}, {days_overdue} days overdue.',
+            'priority_score': int(inv.total_amount) + (days_overdue * 10),
+            'related_invoice_id': inv.id,
+        })
+
+    # Top 3 by priority — "3 decisions, never more"
+    suggestions.sort(key=lambda s: s['priority_score'], reverse=True)
+    top_3 = suggestions[:3]
+
+    # Save as BusinessSuggestion rows — foundation for future tracking
+    saved = []
+    for s in top_3:
+        obj = BusinessSuggestion.objects.create(
+            tenant=tenant,
+            category=s['category'],
+            title=s['title'],
+            detail=s['detail'],
+            priority_score=s['priority_score'],
+            related_product_id=s.get('related_product_id'),
+            related_invoice_id=s.get('related_invoice_id'),
+        )
+        saved.append(obj)
+
+    # Build Telegram message
+    if not top_3:
+        message = f"<b>📋 Business Brief — {tenant.name}</b>\n\nAll clear! No urgent items today."
+    else:
+        lines = [f"<b>📋 Business Brief — {tenant.name}</b>\n"]
+        icons = {'restock': '🟡', 'dead_stock': '🔵', 'overdue': '🟢'}
+        for i, s in enumerate(top_3, 1):
+            lines.append(f"{icons.get(s['category'], '•')} {i}. {s['title']}\n   {s['detail']}")
+        message = "\n\n".join(lines)
+
+    telegram_sent = False
+    telegram_error = None
+    if tenant.telegram_chat_id:
+        telegram_sent, telegram_error = send_telegram_message(tenant.telegram_chat_id, message)
+
+    return Response({
+        'suggestions': [{
+            'id': str(s.id),
+            'category': s.category,
+            'title': s.title,
+            'detail': s.detail,
+            'status': s.status,
+            'related_product_id': str(s.related_product_id) if s.related_product_id else None,
+            'related_invoice_id': str(s.related_invoice_id) if s.related_invoice_id else None,
+        } for s in saved],
+        'telegram_sent': telegram_sent,
+        'telegram_error': telegram_error,
+    })
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_suggestion_status(request, suggestion_id):
+    """
+    Mark a suggestion as 'acted' or 'dismissed' — this status history is
+    the raw data future Business Memory pattern-learning will use.
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    from django.utils import timezone
+    from .models import BusinessSuggestion
+
+    new_status = request.data.get('status')
+    if new_status not in ['acted', 'dismissed']:
+        return Response({'error': 'Status must be "acted" or "dismissed".'}, status=400)
+
+    try:
+        suggestion = BusinessSuggestion.objects.get(id=suggestion_id, tenant=tenant)
+    except BusinessSuggestion.DoesNotExist:
+        return Response({'error': 'Suggestion not found.'}, status=404)
+
+    suggestion.status = new_status
+    suggestion.resolved_at = timezone.now()
+    suggestion.save()
+
+    return Response({'message': 'Updated.', 'status': suggestion.status})

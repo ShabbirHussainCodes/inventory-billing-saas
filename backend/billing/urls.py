@@ -15,4 +15,6 @@ urlpatterns = [
     path('invoices/<uuid:pk>/status/', views.invoice_update_status, name='invoice-status'),
     path('close-day/', views.close_day, name='close-day'),
     path('cashflow/', views.cashflow_summary, name='cashflow-summary'),
+    path('business-brief/', views.generate_business_brief, name='generate-business-brief'),
+    path('suggestions/<uuid:suggestion_id>/status/', views.update_suggestion_status, name='update-suggestion-status'),
 ]

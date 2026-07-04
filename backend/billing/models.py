@@ -219,3 +219,55 @@ class InvoiceItem(models.Model):
 
     class Meta:
         ordering = ['id']
+
+class BusinessSuggestion(models.Model):
+    """
+    Business Brief — v1 of the Decision Engine.
+    Rules-based suggestions (restock, dead stock, overdue collection)
+    delivered to the tenant via Telegram + Dashboard.
+
+    Status tracking (sent/acted/dismissed) is the foundation for future
+    "Business Memory" — learning which suggestions this specific tenant
+    acts on vs ignores. That pattern-learning needs months of data to
+    become meaningful; this model just starts collecting it from day one.
+    """
+    CATEGORY_CHOICES = [
+        ('restock', 'Restock Needed'),
+        ('dead_stock', 'Dead Stock'),
+        ('overdue', 'Overdue Collection'),
+    ]
+    STATUS_CHOICES = [
+        ('sent', 'Sent'),
+        ('acted', 'Acted On'),
+        ('dismissed', 'Dismissed'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='suggestions'
+    )
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    title = models.CharField(max_length=255)
+    detail = models.TextField(blank=True)
+
+    # Optional links — jis product/invoice/customer se yeh suggestion related hai
+    related_product = models.ForeignKey(
+        'inventory.Product', on_delete=models.SET_NULL, null=True, blank=True
+    )
+    related_invoice = models.ForeignKey(
+        'billing.Invoice', on_delete=models.SET_NULL, null=True, blank=True
+    )
+
+    priority_score = models.IntegerField(default=0)  # zyada = zyada urgent
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='sent')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.get_category_display()} — {self.title}"
