@@ -60,6 +60,70 @@ function calculateFreightAllocation(items, freightCharge, splitMethod) {
   return allocation
 }
 
+// ─── Container Recommendation (Phase 2) ──────────────────────────────────────
+// Capacities verified against multiple independent freight/logistics sources
+// (cross-checked, not from a single unverified source). Two numbers shown
+// deliberately: "theoretical" max (what's often quoted) vs "practical"
+// usable volume (~85% of theoretical, accounting for loading gaps, access
+// space, irregular cargo shapes) — every source warned theoretical-only
+// numbers overstate what actually fits. These are approximate industry
+// figures, not exact for every container manufacturer — always confirm
+// with your actual freight forwarder before finalizing a shipment.
+const CONTAINER_SPECS = [
+  { name: '20ft Standard',   theoretical: 33.2, practical: 28 },
+  { name: '40ft Standard',   theoretical: 67.7, practical: 55 },
+  { name: '40ft High Cube',  theoretical: 76.3, practical: 64 },
+]
+
+function getContainerRecommendation(totalCbm) {
+  if (!totalCbm || totalCbm <= 0) return null
+
+  for (const container of CONTAINER_SPECS) {
+    if (totalCbm <= container.practical) {
+      return {
+        ...container,
+        utilization: (totalCbm / container.practical) * 100,
+        fits: true,
+      }
+    }
+  }
+
+  // Exceeds even the largest container in this list
+  const largest = CONTAINER_SPECS[CONTAINER_SPECS.length - 1]
+  return {
+    ...largest,
+    utilization: (totalCbm / largest.practical) * 100,
+    fits: false,
+  }
+}
+
+// Phase 3 — simple, honest, rule-based utilization guidance.
+// Deliberately NOT quantifying rupee savings (e.g. "save ₹X by waiting") —
+// that would require knowing future orders/timing, which this system
+// cannot see. Guidance stays qualitative and actionable instead.
+function getUtilizationMessage(rec) {
+  if (!rec) return null
+  if (!rec.fits) {
+    return {
+      tone: 'warning',
+      text: `Total volume exceeds a single ${rec.name} container. You may need multiple containers — consult your freight forwarder.`,
+    }
+  }
+  if (rec.utilization < 50) {
+    return {
+      tone: 'info',
+      text: 'Container is under-utilized. Consider LCL (shared container) shipping, or combining with another order to reduce cost per unit.',
+    }
+  }
+  if (rec.utilization >= 90) {
+    return {
+      tone: 'warning',
+      text: 'Container is nearly full. Confirm with your supplier that all items will physically fit given their actual shapes.',
+    }
+  }
+  return null
+}
+
 function StatusBadge({ status }) {
   const cfg = STATUS_CFG[status] || { label: status, cls: "bg-gray-100 text-gray-500" }
   return <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.cls}`}>{cfg.label}</span>
@@ -98,11 +162,15 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
   }
 
   // CBM total — sirf un items ka jinke product mein volume_cbm set hai
+  // Bug fix: this must use volume_cbm_override first (falling back to
+  // product default) — same priority as calculateFreightAllocation's
+  // by_volume logic. Previously this ignored the override entirely,
+  // showing wrong totals whenever a user typed a custom CBM value.
   const totalCbm = items.reduce((sum, i) => {
-    if (i.product?.volume_cbm) {
-      return sum + (parseFloat(i.product.volume_cbm) * (i.quantity_ordered || 0))
-    }
-    return sum
+    const vol = i.volume_cbm_override !== '' && i.volume_cbm_override != null
+      ? parseFloat(i.volume_cbm_override) || 0
+      : (i.product?.volume_cbm ? parseFloat(i.product.volume_cbm) : 0)
+    return sum + vol * (i.quantity_ordered || 0)
   }, 0)
 
   const totalCost = items.reduce((sum, i) => sum + (i.unit_cost || 0) * (i.quantity_ordered || 0), 0)
@@ -288,6 +356,37 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
             )}
           </div>
 
+          {/* Container Recommendation — Phase 2 */}
+          {(() => {
+            const rec = getContainerRecommendation(totalCbm)
+            if (!rec) return null
+            const msg = getUtilizationMessage(rec)
+            return (
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
+                <p className="text-xs font-medium text-indigo-800 mb-2">📦 Container Recommendation</p>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm text-gray-700">
+                    Suggested: <span className="font-semibold text-gray-900">{rec.name}</span>
+                    {!rec.fits && <span className="text-red-600"> (exceeds this size)</span>}
+                  </p>
+                  <p className="text-xs text-gray-500">{rec.utilization.toFixed(0)}% used</p>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-1.5 mb-2 overflow-hidden">
+                  <div className={`h-1.5 rounded-full ${rec.utilization > 90 ? 'bg-red-500' : rec.utilization < 50 ? 'bg-amber-400' : 'bg-indigo-500'}`}
+                    style={{ width: `${Math.min(rec.utilization, 100)}%` }} />
+                </div>
+                <p className="text-[10px] text-gray-400">
+                  Theoretical: {rec.theoretical} m³ · Practical usable: ~{rec.practical} m³ (approximate — confirm with your freight forwarder)
+                </p>
+                {msg && (
+                  <p className={`text-xs mt-2 ${msg.tone === 'warning' ? 'text-amber-700' : 'text-indigo-700'}`}>
+                    {msg.tone === 'warning' ? '⚠️ ' : 'ℹ️ '}{msg.text}
+                  </p>
+                )}
+              </div>
+            )
+          })()}
+
           {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
 
@@ -411,7 +510,13 @@ export default function PurchaseOrdersPage() {
         <div className="space-y-2">
           {orders.map(po => {
             const totalCost = po.items.reduce((sum, i) => sum + parseFloat(i.unit_cost) * i.quantity_ordered, 0)
-            const totalCbm = po.items.reduce((sum, i) => sum + (i.volume_cbm ? parseFloat(i.volume_cbm) * i.quantity_ordered : 0), 0)
+            const totalCbm = po.items.reduce((sum, i) => {
+              const vol = i.volume_cbm_override != null
+                ? parseFloat(i.volume_cbm_override)
+                : (i.volume_cbm ? parseFloat(i.volume_cbm) : 0)
+              return sum + vol * i.quantity_ordered
+            }, 0)
+            const containerRec = getContainerRecommendation(totalCbm)
             return (
               <div key={po.id} className="rounded-2xl border border-gray-200 bg-white p-4">
                 <div className="flex items-start justify-between mb-2">
@@ -430,6 +535,11 @@ export default function PurchaseOrdersPage() {
                     <span>Freight: <span className="font-medium text-amber-700">{sym}{parseFloat(po.freight_charge).toLocaleString()}</span></span>
                   )}
                   {totalCbm > 0 && <span>Volume: <span className="font-medium text-gray-800">{totalCbm.toFixed(4)} m³</span></span>}
+                  {containerRec && (
+                    <span className={containerRec.fits ? 'text-indigo-600' : 'text-red-600'}>
+                      📦 {containerRec.name} ({containerRec.utilization.toFixed(0)}%)
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">
