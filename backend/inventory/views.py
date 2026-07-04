@@ -3,12 +3,14 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.utils import timezone
-from .models import Category, Supplier, Product, StockMovement
+from django.db.models import F
+from .models import Category, Supplier, Product, StockMovement, PurchaseOrder, PurchaseOrderItem
 from .serializers import (
     CategorySerializer,
     SupplierSerializer,
     ProductSerializer,
-    StockMovementSerializer
+    StockMovementSerializer,
+    PurchaseOrderSerializer,
 )
 from superadmin.utils import get_active_tenant, is_edit_mode
 
@@ -156,9 +158,23 @@ def product_list(request):
         return Response({'error': 'No active business context.'}, status=400)
 
     if request.method == 'GET':
+        from django.db.models import Sum, Q
+        from django.db.models.functions import Coalesce
+
+        # Incoming = ordered but not yet received. v1 only supports full
+        # receiving (no partial), so quantity_received is always 0 while
+        # status='ordered' — this simplification will need revisiting if
+        # partial receiving is added later.
         products = Product.objects.filter(
             tenant=tenant,
             is_active=True
+        ).annotate(
+            incoming_quantity=Coalesce(
+                Sum(
+                    'purchaseorderitem__quantity_ordered',
+                    filter=Q(purchaseorderitem__purchase_order__status='ordered')
+                ), 0
+            )
         )
         serializer = ProductSerializer(products, many=True)
         return Response(serializer.data)
@@ -411,3 +427,128 @@ def stock_movement_list(request):
         'total_pages': max(1, (total_count + page_size - 1) // page_size),
         'results': data,
     })
+
+
+# ─── PURCHASE ORDER VIEWS ─────────────────────────────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def purchase_order_list(request):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    if request.method == 'GET':
+        orders = PurchaseOrder.objects.filter(tenant=tenant).prefetch_related('items')
+        serializer = PurchaseOrderSerializer(orders, many=True)
+        return Response(serializer.data)
+
+    elif request.method == 'POST':
+        serializer = PurchaseOrderSerializer(data=request.data, context={'tenant': tenant})
+        if serializer.is_valid():
+            po = serializer.save()
+            # Note: no audit log entry here — AuditLog's ACTION_CHOICES has
+            # no "purchase order created" option yet, and forcing a mismatched
+            # label (e.g. 'product_updated') would be misleading. Can add a
+            # proper choice + migration later if PO audit trail is needed.
+            return Response(
+                PurchaseOrderSerializer(po).data,
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def purchase_order_detail(request, pk):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    try:
+        po = PurchaseOrder.objects.get(pk=pk, tenant=tenant)
+    except PurchaseOrder.DoesNotExist:
+        return Response({'error': 'Purchase order not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(PurchaseOrderSerializer(po).data)
+
+    elif request.method == 'DELETE':
+        # Sirf draft orders delete ho sakte hain — ordered/received orders
+        # ka data/audit trail preserve karna zaroori hai
+        if po.status != 'draft':
+            return Response({
+                'error': 'Only draft purchase orders can be deleted.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        po.delete()
+        return Response({'message': 'Purchase order deleted.'})
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def purchase_order_update_status(request, pk):
+    """
+    Status transitions: draft → ordered → received, or → cancelled.
+
+    v1 receiving is "all or nothing" — marking as Received sets every
+    item's quantity_received = quantity_ordered and adds that stock in
+    one go. Partial receiving (receiving some items/quantities before
+    others) is not supported yet — the data model (quantity_received
+    field) is ready for it, but the UI/logic for partial amounts would
+    need to be added later as a separate change.
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    try:
+        po = PurchaseOrder.objects.get(pk=pk, tenant=tenant)
+    except PurchaseOrder.DoesNotExist:
+        return Response({'error': 'Purchase order not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    new_status = request.data.get('status')
+    valid_statuses = ['draft', 'ordered', 'received', 'cancelled']
+    if new_status not in valid_statuses:
+        return Response({'error': f'Status must be one of: {", ".join(valid_statuses)}'}, status=400)
+
+    today = timezone.now().date()
+
+    if new_status == 'ordered' and po.status == 'draft':
+        po.status = 'ordered'
+        po.order_date = po.order_date or today
+        po.save()
+
+    elif new_status == 'received' and po.status == 'ordered':
+        # Stock add karo har item ke liye — F() expression, atomic,
+        # stale-object bug se bachne ke liye (established pattern)
+        for item in po.items.select_related('product'):
+            item.quantity_received = item.quantity_ordered
+            item.save()
+
+            if item.product_id:
+                Product.objects.filter(pk=item.product_id).update(
+                    stock_quantity=F('stock_quantity') + item.quantity_ordered
+                )
+                StockMovement.objects.create(
+                    tenant=tenant,
+                    product_id=item.product_id,
+                    movement_type='in',
+                    quantity=item.quantity_ordered,
+                    note=f'Purchase order received — {po.supplier.name if po.supplier else "supplier"}',
+                    user=request.user,
+                )
+
+        po.status = 'received'
+        po.received_date = today
+        po.save()
+
+    elif new_status == 'cancelled' and po.status in ['draft', 'ordered']:
+        po.status = 'cancelled'
+        po.save()
+
+    else:
+        return Response({
+            'error': f'Cannot change status from "{po.status}" to "{new_status}".'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    return Response(PurchaseOrderSerializer(po).data)

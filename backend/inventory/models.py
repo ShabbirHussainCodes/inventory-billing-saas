@@ -96,6 +96,14 @@ class Product(models.Model):
     stock_quantity = models.IntegerField(default=0)
     reorder_point = models.IntegerField(default=10)
 
+    # --- Shipping / Logistics ---
+    # Cubic meters per unit — optional, used for calculating total shipment
+    # volume on Purchase Orders. Only relevant for businesses ordering in
+    # bulk/containers from suppliers.
+    volume_cbm = models.DecimalField(
+        max_digits=10, decimal_places=4, null=True, blank=True
+    )
+
     # --- Tax ---
     # Global ready — GST/VAT/Sales Tax sab handle karega
     tax_rate = models.DecimalField(
@@ -193,3 +201,74 @@ class StockMovement(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+class PurchaseOrder(models.Model):
+    """
+    Order placed with a supplier — tracks what's "on the way" but not
+    yet received. When marked Received, stock is added automatically.
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('ordered', 'Ordered'),
+        ('received', 'Received'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='purchase_orders'
+    )
+    supplier = models.ForeignKey(
+        Supplier,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='purchase_orders'
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+
+    order_date = models.DateField(null=True, blank=True)
+    expected_date = models.DateField(null=True, blank=True)
+    received_date = models.DateField(null=True, blank=True)
+
+    notes = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        supplier_name = self.supplier.name if self.supplier else 'Unknown supplier'
+        return f"PO — {supplier_name} — {self.status}"
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class PurchaseOrderItem(models.Model):
+    """
+    Line item on a Purchase Order. quantity_received is tracked
+    separately from quantity_ordered from day one — even though v1's
+    UI only supports marking an order fully received (not partial),
+    having this field now means partial receiving can be added later
+    as a UI change only, without a future migration.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    purchase_order = models.ForeignKey(
+        PurchaseOrder,
+        on_delete=models.CASCADE,
+        related_name='items'
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True
+    )
+    product_name = models.CharField(max_length=255)  # snapshot, same pattern as InvoiceItem
+
+    quantity_ordered = models.IntegerField()
+    quantity_received = models.IntegerField(default=0)
+    unit_cost = models.DecimalField(max_digits=12, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.product_name} × {self.quantity_ordered}"

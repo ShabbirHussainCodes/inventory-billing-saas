@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, Supplier, Product, StockMovement
+from .models import Category, Supplier, Product, StockMovement, PurchaseOrder, PurchaseOrderItem
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -36,6 +36,12 @@ class ProductSerializer(serializers.ModelSerializer):
     # Yeh extra fields automatically calculate honge
     profit_margin = serializers.ReadOnlyField()
     is_low_stock = serializers.ReadOnlyField()
+    # SerializerMethodField — safe whether the queryset is annotated
+    # (product_list) or not (product_detail). getattr avoids AttributeError.
+    incoming_quantity = serializers.SerializerMethodField()
+
+    def get_incoming_quantity(self, obj):
+        return getattr(obj, 'incoming_quantity', None)
 
     # Category aur Supplier ka naam dikhega — sirf ID nahi
     category_name = serializers.CharField(
@@ -64,6 +70,8 @@ class ProductSerializer(serializers.ModelSerializer):
             'profit_margin',
             'stock_quantity',
             'reorder_point',
+            'volume_cbm',
+            'incoming_quantity',
             'is_low_stock',
             'tax_rate',
             'hsn_code',
@@ -98,3 +106,70 @@ class StockMovementSerializer(serializers.ModelSerializer):
             'created_at'
         ]
         read_only_fields = ['id', 'created_at']
+
+class PurchaseOrderItemSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    volume_cbm = serializers.DecimalField(
+        source='product.volume_cbm', max_digits=10, decimal_places=4,
+        read_only=True, allow_null=True
+    )
+
+    class Meta:
+        model = PurchaseOrderItem
+        fields = [
+            'id', 'product', 'product_name',
+            'quantity_ordered', 'quantity_received',
+            'unit_cost', 'volume_cbm',
+        ]
+        read_only_fields = ['id', 'quantity_received']
+
+
+class PurchaseOrderSerializer(serializers.ModelSerializer):
+    items = PurchaseOrderItemSerializer(many=True)
+    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
+
+    class Meta:
+        model = PurchaseOrder
+        fields = [
+            'id', 'supplier', 'supplier_name', 'status',
+            'order_date', 'expected_date', 'received_date',
+            'notes', 'items', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'received_date', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        # Tenant isolation — supplier aur har product is tenant ka hona chahiye
+        tenant = self.context['tenant']
+
+        supplier = attrs.get('supplier')
+        if supplier and supplier.tenant != tenant:
+            raise serializers.ValidationError({'supplier': 'Invalid supplier.'})
+
+        items = attrs.get('items', [])
+        if not items:
+            raise serializers.ValidationError({'items': 'At least one item is required.'})
+
+        for i, item in enumerate(items):
+            product = item.get('product')
+            if product and product.tenant != tenant:
+                raise serializers.ValidationError({'items': f'Invalid product in item {i + 1}.'})
+
+        return attrs
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items')
+        tenant = self.context['tenant']
+
+        purchase_order = PurchaseOrder.objects.create(tenant=tenant, **validated_data)
+
+        for item_data in items_data:
+            product = item_data.get('product')
+            PurchaseOrderItem.objects.create(
+                purchase_order=purchase_order,
+                product=product,
+                product_name=product.name if product else 'Unknown product',
+                quantity_ordered=item_data['quantity_ordered'],
+                unit_cost=item_data['unit_cost'],
+            )
+
+        return purchase_order

@@ -134,6 +134,12 @@ export const inventoryAPI = {
   addSupplier: (data) => api.post('/inventory/suppliers/', data),
   updateSupplier: (id, data) => api.put(`/inventory/suppliers/${id}/`, data),
   deleteSupplier: (id) => api.delete(`/inventory/suppliers/${id}/`),
+
+  getPurchaseOrders: () => api.get('/inventory/purchase-orders/'),
+  addPurchaseOrder: (data) => api.post('/inventory/purchase-orders/', data),
+  getPurchaseOrder: (id) => api.get(`/inventory/purchase-orders/${id}/`),
+  deletePurchaseOrder: (id) => api.delete(`/inventory/purchase-orders/${id}/`),
+  updatePurchaseOrderStatus: (id, status) => api.patch(`/inventory/purchase-orders/${id}/status/`, { status }),
 }
 
 export const billingAPI = {

@@ -20,4 +20,9 @@ urlpatterns = [
     # Stock movement
     path('stock-movement/', views.add_stock_movement, name='stock-movement'),
     path('stock-movements/', views.stock_movement_list, name='stock-movement-list'),
+
+    # Purchase Orders
+    path('purchase-orders/', views.purchase_order_list, name='purchase-order-list'),
+    path('purchase-orders/<uuid:pk>/', views.purchase_order_detail, name='purchase-order-detail'),
+    path('purchase-orders/<uuid:pk>/status/', views.purchase_order_update_status, name='purchase-order-status'),
 ]

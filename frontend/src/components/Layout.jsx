@@ -72,6 +72,21 @@ const NAV_ITEMS = [
     ),
   },
   {
+    to: "/purchase-orders",
+    label: "Purchase Orders",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+        strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+        <path d="M16 3h5v5" />
+        <path d="M8 3H3v5" />
+        <path d="M3 16v5h5" />
+        <path d="M21 16v5h-5" />
+        <path d="M3 3l7 7" />
+        <path d="M21 3l-7 7" />
+      </svg>
+    ),
+  },
+  {
     to: "/settings",
     label: "Settings",
     icon: (
