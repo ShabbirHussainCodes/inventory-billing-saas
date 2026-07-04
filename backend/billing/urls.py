@@ -17,4 +17,10 @@ urlpatterns = [
     path('cashflow/', views.cashflow_summary, name='cashflow-summary'),
     path('business-brief/', views.generate_business_brief, name='generate-business-brief'),
     path('suggestions/<uuid:suggestion_id>/status/', views.update_suggestion_status, name='update-suggestion-status'),
+
+    # Estimates
+    path('estimates/', views.estimate_list, name='estimate-list'),
+    path('estimates/<uuid:pk>/', views.estimate_detail, name='estimate-detail'),
+    path('estimates/<uuid:pk>/status/', views.estimate_update_status, name='estimate-status'),
+    path('estimates/<uuid:pk>/convert/', views.convert_to_invoice, name='estimate-convert'),
 ]

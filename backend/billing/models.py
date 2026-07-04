@@ -271,3 +271,121 @@ class BusinessSuggestion(models.Model):
 
     def __str__(self):
         return f"{self.get_category_display()} — {self.title}"
+
+
+class Estimate(models.Model):
+    """
+    Quote/Estimate — pre-invoice stage. Draft → Sent → Accepted → Converted,
+    with Rejected as a side-branch (not part of the main happy path).
+
+    Key difference from Invoice: creating/sending an Estimate does NOT
+    touch stock and does NOT count toward the plan's monthly invoice
+    limit — it's not a sale yet, just a proposal.
+    """
+    STATUS_CHOICES = [
+        ('draft',     'Draft'),
+        ('sent',      'Sent'),
+        ('accepted',  'Accepted'),
+        ('rejected',  'Rejected'),
+        ('converted', 'Converted'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='estimates'
+    )
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.CASCADE,
+        related_name='estimates'
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='estimates'
+    )
+
+    estimate_number = models.CharField(max_length=50)
+    estimate_date = models.DateField()
+    valid_until = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+
+    # Tenant se snapshot liya jaata hai creation ke time — Invoice jaisa pattern
+    currency = models.CharField(max_length=10, default='INR')
+    tax_label = models.CharField(max_length=50, default='GST')
+
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    notes = models.TextField(blank=True, null=True)
+
+    # Agar convert ho jaaye toh yahan link store hoga
+    converted_invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='source_estimate'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'estimate_number'],
+                name='unique_estimate_number_per_tenant'
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.estimate_number} — {self.customer.name}"
+
+
+class EstimateItem(models.Model):
+    """
+    Line item on an Estimate — mirrors InvoiceItem's structure but
+    WITHOUT cost_price/profit fields. A quote isn't a completed sale,
+    so tracking profit on it doesn't make sense yet — that only
+    becomes meaningful once it's converted to an actual Invoice.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    estimate = models.ForeignKey(
+        Estimate,
+        on_delete=models.CASCADE,
+        related_name='items'
+    )
+    product = models.ForeignKey(
+        'inventory.Product',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='estimate_items'
+    )
+    product_name = models.CharField(max_length=255)
+    quantity = models.IntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    def save(self, *args, **kwargs):
+        # InvoiceItem jaisa hi calculation pattern — cost_price/profit
+        # nahi hai isliye woh lines yahan nahi hain
+        self.subtotal = self.unit_price * self.quantity
+        self.tax_amount = self.subtotal * (self.tax_rate / 100)
+        self.total = self.subtotal + self.tax_amount
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.product_name} × {self.quantity}"
+
+    class Meta:
+        ordering = ['id']

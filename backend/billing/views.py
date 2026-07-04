@@ -2,11 +2,12 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .models import Customer, Invoice
+from .models import Customer, Invoice, Estimate
 from .serializers import (
     CustomerSerializer,
     InvoiceSerializer,
-    InvoiceCreateSerializer
+    InvoiceCreateSerializer,
+    EstimateSerializer,
 )
 from superadmin.utils import get_active_tenant, is_edit_mode
 
@@ -564,3 +565,147 @@ def update_suggestion_status(request, suggestion_id):
     suggestion.save()
 
     return Response({'message': 'Updated.', 'status': suggestion.status})
+
+
+# ─── ESTIMATE VIEWS ───────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def estimate_list(request):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    if request.method == 'GET':
+        estimates = Estimate.objects.filter(tenant=tenant).select_related('customer')
+        serializer = EstimateSerializer(estimates, many=True)
+        return Response(serializer.data)
+
+    elif request.method == 'POST':
+        # NOTE: Estimates deliberately do NOT count against the plan's
+        # monthly invoice limit — a quote isn't a sale yet.
+        serializer = EstimateSerializer(
+            data=request.data,
+            context={'tenant': tenant, 'user': request.user}
+        )
+        if serializer.is_valid():
+            estimate = serializer.save()
+            return Response(
+                EstimateSerializer(estimate).data,
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def estimate_detail(request, pk):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    try:
+        estimate = Estimate.objects.get(pk=pk, tenant=tenant)
+    except Estimate.DoesNotExist:
+        return Response({'error': 'Estimate not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(EstimateSerializer(estimate).data)
+
+    elif request.method == 'DELETE':
+        if estimate.status != 'draft':
+            return Response({
+                'error': 'Only draft estimates can be deleted.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        estimate.delete()
+        return Response({'message': 'Estimate deleted.'})
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def estimate_update_status(request, pk):
+    """
+    Status transitions: draft → sent → accepted / rejected.
+    'converted' is set only by convert_to_invoice, not here directly.
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    try:
+        estimate = Estimate.objects.get(pk=pk, tenant=tenant)
+    except Estimate.DoesNotExist:
+        return Response({'error': 'Estimate not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    new_status = request.data.get('status')
+    valid_transitions = {
+        'draft':    ['sent'],
+        'sent':     ['accepted', 'rejected'],
+        'accepted': ['rejected'],  # allow correcting a mistaken accept
+    }
+
+    allowed = valid_transitions.get(estimate.status, [])
+    if new_status not in allowed:
+        return Response({
+            'error': f'Cannot change status from "{estimate.status}" to "{new_status}".'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    estimate.status = new_status
+    estimate.save()
+    return Response(EstimateSerializer(estimate).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def convert_to_invoice(request, pk):
+    """
+    Turns an Accepted estimate into a real Invoice. Reuses
+    InvoiceCreateSerializer entirely — stock validation and deduction
+    happen through the exact same path as a normal invoice, so there's
+    no duplicated/divergent logic to maintain.
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    try:
+        estimate = Estimate.objects.get(pk=pk, tenant=tenant)
+    except Estimate.DoesNotExist:
+        return Response({'error': 'Estimate not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if estimate.status != 'accepted':
+        return Response({
+            'error': 'Only accepted estimates can be converted to an invoice.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    from django.utils import timezone
+
+    payload = {
+        'customer': estimate.customer_id,
+        'invoice_date': timezone.now().date().isoformat(),
+        'status': 'sent',
+        'notes': estimate.notes or '',
+        'items': [
+            {
+                'product': item.product_id,
+                'quantity': item.quantity,
+                'unit_price': item.unit_price,
+            }
+            for item in estimate.items.all()
+        ],
+    }
+
+    invoice_serializer = InvoiceCreateSerializer(
+        data=payload,
+        context={'tenant': tenant, 'user': request.user}
+    )
+    if invoice_serializer.is_valid():
+        invoice = invoice_serializer.save()
+        estimate.status = 'converted'
+        estimate.converted_invoice = invoice
+        estimate.save()
+        return Response(InvoiceSerializer(invoice).data, status=status.HTTP_201_CREATED)
+
+    # Agar stock insufficient hai ya koi aur validation fail ho, estimate
+    # ka status wahi rehta hai — user ko pata chal jaayega kya galat hai
+    return Response(invoice_serializer.errors, status=status.HTTP_400_BAD_REQUEST)

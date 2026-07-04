@@ -21,3 +21,19 @@ def generate_invoice_number(tenant):
 
     # Final invoice number
     return f"INV-{year}-{formatted_number}"
+
+
+def generate_estimate_number(tenant):
+    from .models import Estimate
+
+    year = timezone.now().year
+
+    count = Estimate.objects.filter(
+        tenant=tenant,
+        estimate_date__year=year
+    ).count()
+
+    next_number = count + 1
+    formatted_number = str(next_number).zfill(3)
+
+    return f"EST-{year}-{formatted_number}"

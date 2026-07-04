@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Customer, Invoice, InvoiceItem
+from .models import Customer, Invoice, InvoiceItem, Estimate, EstimateItem
 from inventory.models import Product
 
 
@@ -368,3 +368,110 @@ class InvoiceEditSerializer(serializers.ModelSerializer):
             instance.save()
 
         return instance
+
+
+class EstimateItemSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(read_only=True)
+    subtotal     = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    tax_amount   = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    total        = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = EstimateItem
+        fields = [
+            'id',
+            'product',
+            'product_name',
+            'quantity',
+            'unit_price',
+            'tax_rate',
+            'subtotal',
+            'tax_amount',
+            'total',
+        ]
+        read_only_fields = ['id']
+
+
+class EstimateSerializer(serializers.ModelSerializer):
+    items = EstimateItemSerializer(many=True)
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    customer_email = serializers.CharField(source='customer.email', read_only=True, default='')
+    customer_phone = serializers.CharField(source='customer.phone', read_only=True, default='')
+
+    class Meta:
+        model = Estimate
+        fields = [
+            'id', 'customer', 'customer_name', 'customer_email', 'customer_phone',
+            'estimate_number', 'estimate_date', 'valid_until', 'status',
+            'currency', 'tax_label',
+            'subtotal', 'tax_amount', 'total_amount',
+            'notes', 'items', 'converted_invoice',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'estimate_number', 'currency', 'tax_label',
+            'subtotal', 'tax_amount', 'total_amount',
+            'converted_invoice', 'created_at', 'updated_at',
+        ]
+
+    def validate(self, attrs):
+        # Tenant isolation check — Invoice ke jaisa hi pattern.
+        # NOTE: yahan stock-availability check jaan-bujh kar NAHI hai —
+        # ek estimate/quote dene ke liye stock abhi available hona
+        # zaroori nahi (bas ek proposal hai), stock check sirf tab hoga
+        # jab yeh actual Invoice mein convert hoga.
+        tenant = self.context['tenant']
+
+        customer = attrs.get('customer')
+        if customer and customer.tenant != tenant:
+            raise serializers.ValidationError({'customer': 'Invalid customer.'})
+
+        items = attrs.get('items', [])
+        if not items:
+            raise serializers.ValidationError({'items': 'At least one item is required.'})
+
+        for i, item in enumerate(items):
+            product = item.get('product')
+            if product and product.tenant != tenant:
+                raise serializers.ValidationError({'items': f'Invalid product in item {i + 1}.'})
+
+        return attrs
+
+    def create(self, validated_data):
+        from .utils import generate_estimate_number
+
+        items_data = validated_data.pop('items')
+        tenant = self.context['tenant']
+        user = self.context['user']
+
+        estimate = Estimate.objects.create(
+            tenant=tenant,
+            created_by=user,
+            estimate_number=generate_estimate_number(tenant),
+            currency=tenant.currency,
+            tax_label=tenant.tax_label,
+            **validated_data
+        )
+
+        subtotal = 0
+        tax_amount = 0
+
+        for item_data in items_data:
+            product = item_data.get('product')
+            if product:
+                item_data['product_name'] = product.name
+                item_data['tax_rate'] = product.tax_rate
+
+            estimate_item = EstimateItem.objects.create(
+                estimate=estimate,
+                **item_data
+            )
+            subtotal += estimate_item.subtotal
+            tax_amount += estimate_item.tax_amount
+
+        estimate.subtotal = subtotal
+        estimate.tax_amount = tax_amount
+        estimate.total_amount = subtotal + tax_amount
+        estimate.save()
+
+        return estimate

@@ -6,6 +6,7 @@ import RegisterPage from "./pages/RegisterPage"
 import DashboardPage from "./pages/DashboardPage"
 import ProductsPage from "./pages/ProductsPage"
 import InvoicesPage from "./pages/InvoicesPage"
+import EstimatesPage from "./pages/EstimatesPage"
 import CustomersPage from "./pages/CustomersPage"
 import CreateInvoicePage from "./pages/CreateInvoicePage"
 import EditInvoicePage from "./pages/EditInvoicePage"
@@ -48,6 +49,7 @@ function App() {
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/products" element={<ProtectedRoute><ProductsPage /></ProtectedRoute>} />
         <Route path="/invoices" element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>} />
+        <Route path="/estimates" element={<ProtectedRoute><EstimatesPage /></ProtectedRoute>} />
         <Route path="/invoices/create" element={<ProtectedRoute><CreateInvoicePage /></ProtectedRoute>} />
         <Route path="/invoices/edit/:id" element={<ProtectedRoute><EditInvoicePage /></ProtectedRoute>} />
         <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />
