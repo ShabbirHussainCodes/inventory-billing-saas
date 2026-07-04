@@ -70,6 +70,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [closingDay, setClosingDay] = useState(false)
+  const [businessBrief, setBusinessBrief] = useState(null)
+  const [generatingBrief, setGeneratingBrief] = useState(false)
   const [toast, setToast] = useState("")
 
   const fetchData = async () => {
@@ -109,6 +111,34 @@ export default function DashboardPage() {
     }
   }
 
+  const handleGenerateBrief = async () => {
+    setGeneratingBrief(true)
+    try {
+      const res = await billingAPI.generateBusinessBrief()
+      setBusinessBrief(res.data.suggestions)
+      setToast(
+        res.data.telegram_sent
+          ? "Business Brief generated and sent to Telegram ✓"
+          : "Business Brief generated (Telegram not sent — check Settings)"
+      )
+    } catch (err) {
+      setToast(err?.response?.data?.error || "Could not generate Business Brief.")
+    } finally {
+      setGeneratingBrief(false)
+      setTimeout(() => setToast(""), 4000)
+    }
+  }
+
+  const handleSuggestionAction = async (id, status) => {
+    try {
+      await billingAPI.updateSuggestionStatus(id, status)
+      setBusinessBrief(prev => prev.map(s => s.id === id ? { ...s, status } : s))
+    } catch {
+      setToast("Could not update suggestion.")
+      setTimeout(() => setToast(""), 3000)
+    }
+  }
+
   if (loading) {
     return <Layout><DashboardSkeleton /></Layout>
   }
@@ -145,6 +175,18 @@ export default function DashboardPage() {
 
         {/* Quick actions */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleGenerateBrief}
+            disabled={generatingBrief}
+            className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 transition disabled:opacity-50"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+              strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+              <path d="M9 11l3 3L22 4" />
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            </svg>
+            {generatingBrief ? "Thinking…" : "Business Brief"}
+          </button>
           <button
             onClick={handleCloseDay}
             disabled={closingDay}
@@ -192,6 +234,40 @@ export default function DashboardPage() {
           sub="Collected"
         />
       </div>
+
+      {/* Business Brief — v1 Decision Engine, max 3 suggestions */}
+      {businessBrief && businessBrief.length > 0 && (
+        <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5 mb-4">
+          <p className="text-sm font-medium text-blue-800 mb-3">📋 Today's Business Brief</p>
+          <div className="space-y-2">
+            {businessBrief.map((s) => (
+              <div key={s.id}
+                className={`flex items-center justify-between rounded-xl bg-white border border-blue-100 px-3 py-2.5 ${s.status !== 'sent' ? 'opacity-50' : ''}`}>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800">{s.title}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{s.detail}</p>
+                </div>
+                {s.status === 'sent' ? (
+                  <div className="flex gap-1.5 flex-shrink-0 ml-3">
+                    <button onClick={() => handleSuggestionAction(s.id, 'acted')}
+                      className="rounded-lg border border-green-200 bg-green-50 px-2.5 py-1 text-xs text-green-700 hover:bg-green-100 transition">
+                      Done
+                    </button>
+                    <button onClick={() => handleSuggestionAction(s.id, 'dismissed')}
+                      className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-50 transition">
+                      Dismiss
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-xs text-gray-400 flex-shrink-0 ml-3">
+                    {s.status === 'acted' ? '✓ Done' : 'Dismissed'}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Cashflow — Outstanding + Overdue */}
       {cashflow && (
