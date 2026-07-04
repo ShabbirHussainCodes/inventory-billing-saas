@@ -42,14 +42,18 @@ function calculateFreightAllocation(items, freightCharge, splitMethod) {
       allocation[i.id] = (val / totalValue) * charge
     })
   } else if (splitMethod === 'by_volume') {
-    const totalVolume = validItems.reduce((s, i) => {
-      const vol = i.product?.volume_cbm ? parseFloat(i.product.volume_cbm) : 0
-      return s + vol * (i.quantity_ordered || 0)
-    }, 0)
+    // Override (typed for this specific order) takes priority — falls
+    // back to product's own default volume. Mirrors backend model logic.
+    const getItemVolume = (i) => {
+      if (i.volume_cbm_override !== '' && i.volume_cbm_override != null) {
+        return parseFloat(i.volume_cbm_override) || 0
+      }
+      return i.product?.volume_cbm ? parseFloat(i.product.volume_cbm) : 0
+    }
+    const totalVolume = validItems.reduce((s, i) => s + getItemVolume(i) * (i.quantity_ordered || 0), 0)
     if (totalVolume === 0) return {}
     validItems.forEach(i => {
-      const vol = i.product?.volume_cbm ? parseFloat(i.product.volume_cbm) : 0
-      allocation[i.id] = ((vol * (i.quantity_ordered || 0)) / totalVolume) * charge
+      allocation[i.id] = ((getItemVolume(i) * (i.quantity_ordered || 0)) / totalVolume) * charge
     })
   }
 
@@ -69,14 +73,14 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
   const [notes, setNotes] = useState('')
   const [freightCharge, setFreightCharge] = useState('')
   const [freightSplitMethod, setFreightSplitMethod] = useState('by_value')
-  const [items, setItems] = useState([{ id: 1, product: null, quantity_ordered: 1, unit_cost: 0 }])
+  const [items, setItems] = useState([{ id: 1, product: null, quantity_ordered: 1, unit_cost: 0, volume_cbm_override: '' }])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const sym = SYM[currency] || currency + ' '
 
   const addItem = () => {
-    setItems(prev => [...prev, { id: Date.now(), product: null, quantity_ordered: 1, unit_cost: 0 }])
+    setItems(prev => [...prev, { id: Date.now(), product: null, quantity_ordered: 1, unit_cost: 0, volume_cbm_override: '' }])
   }
   const removeItem = (id) => setItems(prev => prev.filter(i => i.id !== id))
   const updateItem = (id, patch) => setItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i))
@@ -86,6 +90,10 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
       product,
       // Cost price ko default unit cost bana do — user edit kar sakta hai
       unit_cost: product ? product.cost_price : 0,
+      // Product ka default volume suggestion ki tarah bhar do — lekin
+      // yeh sirf starting point hai, user isse is order ke liye
+      // (supplier ke bataye actual CBM ke hisaab se) edit kar sakta hai
+      volume_cbm_override: product?.volume_cbm ? String(product.volume_cbm) : '',
     })
   }
 
@@ -119,6 +127,7 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
           product: i.product.id,
           quantity_ordered: i.quantity_ordered,
           unit_cost: i.unit_cost,
+          volume_cbm_override: i.volume_cbm_override === '' ? null : i.volume_cbm_override,
         })),
       })
       onCreated()
@@ -176,7 +185,7 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
                       </button>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <div>
                       <label className="block text-[10px] text-gray-400 mb-1">Quantity</label>
                       <input type="number" min="1" value={item.quantity_ordered}
@@ -197,10 +206,22 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
                         onChange={e => updateItem(item.id, { unit_cost: parseFloat(e.target.value) || 0 })}
                         className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
                     </div>
+                    <div>
+                      <label className="block text-[10px] text-gray-400 mb-1">
+                        Volume (m³) <span className="text-gray-300">— for this order</span>
+                      </label>
+                      <input type="number" min="0" step="0.0001" value={item.volume_cbm_override}
+                        onChange={e => updateItem(item.id, { volume_cbm_override: e.target.value })}
+                        placeholder="0.0000"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                    </div>
                   </div>
-                  {item.product?.volume_cbm && (
+                  {item.volume_cbm_override && (
                     <p className="mt-1.5 text-[11px] text-gray-400">
-                      Volume: {(item.product.volume_cbm * item.quantity_ordered).toFixed(4)} m³
+                      Total volume: {(parseFloat(item.volume_cbm_override) * item.quantity_ordered).toFixed(4)} m³
+                      {item.product?.volume_cbm && parseFloat(item.volume_cbm_override) !== parseFloat(item.product.volume_cbm) && (
+                        <span className="text-amber-600"> (overridden from product default {item.product.volume_cbm} m³)</span>
+                      )}
                     </p>
                   )}
                   {item.product && freightAllocation[item.id] > 0 && (

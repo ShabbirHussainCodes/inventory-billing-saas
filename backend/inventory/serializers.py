@@ -119,7 +119,7 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'product', 'product_name',
             'quantity_ordered', 'quantity_received',
-            'unit_cost', 'volume_cbm',
+            'unit_cost', 'volume_cbm', 'volume_cbm_override',
         ]
         read_only_fields = ['id', 'quantity_received']
 
@@ -196,6 +196,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
                 product_name=product.name if product else 'Unknown product',
                 quantity_ordered=item_data['quantity_ordered'],
                 unit_cost=item_data['unit_cost'],
+                volume_cbm_override=item_data.get('volume_cbm_override'),
             )
 
         return purchase_order

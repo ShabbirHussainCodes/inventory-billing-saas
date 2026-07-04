@@ -303,17 +303,20 @@ class PurchaseOrder(models.Model):
                 allocation[item.id] = (item_value / total_value) * self.freight_charge
 
         elif self.freight_split_method == 'by_volume':
-            total_volume = sum(
-                (item.product.volume_cbm or Decimal('0')) * item.quantity_ordered
-                for item in items if item.product
-            )
+            # Override takes priority — supplier-told CBM for THIS order
+            # line, falling back to the product's own default volume.
+            def get_item_volume(item):
+                if item.volume_cbm_override is not None:
+                    return item.volume_cbm_override
+                if item.product and item.product.volume_cbm:
+                    return item.product.volume_cbm
+                return Decimal('0')
+
+            total_volume = sum(get_item_volume(item) * item.quantity_ordered for item in items)
             if total_volume == 0:
                 return {}
             for item in items:
-                if not item.product or not item.product.volume_cbm:
-                    allocation[item.id] = Decimal('0')
-                    continue
-                item_volume = item.product.volume_cbm * item.quantity_ordered
+                item_volume = get_item_volume(item) * item.quantity_ordered
                 allocation[item.id] = (item_volume / total_volume) * self.freight_charge
 
         return allocation
@@ -346,6 +349,19 @@ class PurchaseOrderItem(models.Model):
     quantity_ordered = models.IntegerField()
     quantity_received = models.IntegerField(default=0)
     unit_cost = models.DecimalField(max_digits=12, decimal_places=2)
+
+    # --- Per-order volume override ---
+    # Verified via Odoo community research: standard Odoo's Volume field
+    # is product-level only (one fixed value per SKU). Real-world need
+    # (confirmed by an actual Odoo forum thread) is that the SAME product
+    # can arrive in different box/carton sizes depending on supplier or
+    # shipment — so a fixed per-product volume isn't always accurate.
+    # This field lets the actual CBM for THIS specific order/line be typed
+    # in (as told by the supplier), overriding the product's default.
+    # If left blank, the product's own volume_cbm is used as a fallback.
+    volume_cbm_override = models.DecimalField(
+        max_digits=10, decimal_places=4, null=True, blank=True
+    )
 
     def __str__(self):
         return f"{self.product_name} × {self.quantity_ordered}"
