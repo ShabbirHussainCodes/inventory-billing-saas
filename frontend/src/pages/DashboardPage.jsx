@@ -236,6 +236,11 @@ export default function DashboardPage() {
       </div>
 
       {/* Business Brief — v1 Decision Engine, max 3 suggestions */}
+      {businessBrief && businessBrief.length === 0 && (
+        <div className="rounded-2xl border border-green-100 bg-green-50/50 p-5 mb-4 text-center">
+          <p className="text-sm font-medium text-green-700">✓ All clear — no urgent items today</p>
+        </div>
+      )}
       {businessBrief && businessBrief.length > 0 && (
         <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5 mb-4">
           <p className="text-sm font-medium text-blue-800 mb-3">📋 Today's Business Brief</p>
