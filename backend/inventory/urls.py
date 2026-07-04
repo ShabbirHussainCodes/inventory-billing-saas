@@ -25,4 +25,5 @@ urlpatterns = [
     path('purchase-orders/', views.purchase_order_list, name='purchase-order-list'),
     path('purchase-orders/<uuid:pk>/', views.purchase_order_detail, name='purchase-order-detail'),
     path('purchase-orders/<uuid:pk>/status/', views.purchase_order_update_status, name='purchase-order-status'),
+    path('purchase-orders/freight-summary/', views.freight_summary, name='freight-summary'),
 ]

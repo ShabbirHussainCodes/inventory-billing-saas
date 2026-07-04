@@ -519,22 +519,61 @@ def purchase_order_update_status(request, pk):
         po.save()
 
     elif new_status == 'received' and po.status == 'ordered':
+        from decimal import Decimal
+
         # Stock add karo har item ke liye — F() expression, atomic,
-        # stale-object bug se bachne ke liye (established pattern)
+        # stale-object bug se bachne ke liye (established pattern).
+        #
+        # Known limitation (being transparent about this): old_qty/old_cost
+        # are read in Python before the atomic update below. If two purchase
+        # orders for the exact same product were received at the exact same
+        # instant, there's a small race window. For a single small-business
+        # user receiving orders one at a time, this is not a practical risk,
+        # but it's not the same as a fully DB-level atomic read+write.
         for item in po.items.select_related('product'):
             item.quantity_received = item.quantity_ordered
             item.save()
 
             if item.product_id:
+                product = item.product
+                old_qty = product.stock_quantity
+                old_cost = product.cost_price
+                new_qty = item.quantity_ordered
+                new_cost = item.unit_cost
+
+                # Weighted Average Cost — standard inventory accounting
+                # method (same principle as Odoo's AVCO costing) for when
+                # the same item is bought at a different price than before.
+                # This uses the base unit_cost only, NOT freight-inclusive
+                # landed cost — freight is tracked separately (see
+                # freight_charge) and does not affect cost_price, per the
+                # scope decision made for this feature.
+                if old_qty > 0:
+                    weighted_avg_cost = (
+                        (Decimal(old_qty) * old_cost) + (Decimal(new_qty) * new_cost)
+                    ) / Decimal(old_qty + new_qty)
+                else:
+                    # No existing stock to average against — avoids
+                    # division by zero, new cost becomes the cost outright.
+                    weighted_avg_cost = new_cost
+
                 Product.objects.filter(pk=item.product_id).update(
-                    stock_quantity=F('stock_quantity') + item.quantity_ordered
+                    stock_quantity=F('stock_quantity') + item.quantity_ordered,
+                    cost_price=round(weighted_avg_cost, 2),
+                )
+                note = (
+                    f'Purchase order received — '
+                    f'{po.supplier.name if po.supplier else "supplier"} '
+                    f'(avg cost updated: {old_cost} → {round(weighted_avg_cost, 2)})'
+                    if old_qty > 0 else
+                    f'Purchase order received — {po.supplier.name if po.supplier else "supplier"}'
                 )
                 StockMovement.objects.create(
                     tenant=tenant,
                     product_id=item.product_id,
                     movement_type='in',
                     quantity=item.quantity_ordered,
-                    note=f'Purchase order received — {po.supplier.name if po.supplier else "supplier"}',
+                    note=note,
                     user=request.user,
                 )
 
@@ -552,3 +591,44 @@ def purchase_order_update_status(request, pk):
         }, status=status.HTTP_400_BAD_REQUEST)
 
     return Response(PurchaseOrderSerializer(po).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def freight_summary(request):
+    """
+    Total freight/shipping charges for a given month — so the business
+    owner can see "how much did shipping cost me this month" at a glance.
+    Defaults to the current month if no year/month query params given.
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    from django.db.models import Sum, Count
+    from django.db.models.functions import Coalesce
+    from decimal import Decimal
+
+    now = timezone.now()
+    try:
+        year = int(request.query_params.get('year', now.year))
+        month = int(request.query_params.get('month', now.month))
+    except ValueError:
+        return Response({'error': 'Invalid year/month.'}, status=400)
+
+    # Sirf "received" orders count karte hain — draft/ordered ka freight
+    # abhi actual expense nahi hai, sirf estimate hai
+    agg = PurchaseOrder.objects.filter(
+        tenant=tenant, status='received',
+        received_date__year=year, received_date__month=month,
+    ).aggregate(
+        total_freight=Coalesce(Sum('freight_charge'), Decimal('0.00')),
+        order_count=Count('id'),
+    )
+
+    return Response({
+        'year': year,
+        'month': month,
+        'total_freight': agg['total_freight'],
+        'order_count': agg['order_count'],
+    })

@@ -232,6 +232,25 @@ class PurchaseOrder(models.Model):
     expected_date = models.DateField(null=True, blank=True)
     received_date = models.DateField(null=True, blank=True)
 
+    # --- Freight / Shipping charges ---
+    # Simplified version of the industry-standard "Landed Cost" concept
+    # (seen in Odoo, etc.) — total shipping cost for the order, distributed
+    # across items for REPORTING purposes only. This does NOT modify
+    # Product.cost_price — that's a deliberate scope decision, since
+    # BillingMars doesn't have double-entry/batch-level costing, and
+    # silently changing cost_price via freight would be a bigger, separate
+    # decision than what was asked for here.
+    FREIGHT_SPLIT_CHOICES = [
+        ('equal',       'Equally across items'),
+        ('by_quantity', 'By quantity'),
+        ('by_value',    'By item value (cost × qty)'),
+        ('by_volume',   'By volume (CBM)'),
+    ]
+    freight_charge = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    freight_split_method = models.CharField(
+        max_length=20, choices=FREIGHT_SPLIT_CHOICES, default='by_value'
+    )
+
     notes = models.TextField(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -240,6 +259,64 @@ class PurchaseOrder(models.Model):
     def __str__(self):
         supplier_name = self.supplier.name if self.supplier else 'Unknown supplier'
         return f"PO — {supplier_name} — {self.status}"
+
+    def get_freight_allocation(self):
+        """
+        Returns {item_id: allocated_freight_amount (Decimal)} based on
+        freight_split_method. Uses Decimal throughout — never float —
+        since this is money and rounding errors are not acceptable.
+
+        Honest limitation: for 'by_volume', items whose product has no
+        volume_cbm set are excluded from the total and get ₹0 allocated.
+        If only some items have CBM set, this will skew freight onto
+        those items rather than distributing fairly across all of them.
+        This is a known trade-off — CBM-based splitting only makes sense
+        when all items in the order have volume set.
+        """
+        from decimal import Decimal
+        items = list(self.items.select_related('product').all())
+        if not items or not self.freight_charge:
+            return {}
+
+        allocation = {}
+
+        if self.freight_split_method == 'equal':
+            share = self.freight_charge / Decimal(len(items))
+            for item in items:
+                allocation[item.id] = share
+
+        elif self.freight_split_method == 'by_quantity':
+            total_qty = sum(item.quantity_ordered for item in items)
+            if total_qty == 0:
+                return {}
+            for item in items:
+                allocation[item.id] = (
+                    Decimal(item.quantity_ordered) / Decimal(total_qty)
+                ) * self.freight_charge
+
+        elif self.freight_split_method == 'by_value':
+            total_value = sum(item.unit_cost * item.quantity_ordered for item in items)
+            if total_value == 0:
+                return {}
+            for item in items:
+                item_value = item.unit_cost * item.quantity_ordered
+                allocation[item.id] = (item_value / total_value) * self.freight_charge
+
+        elif self.freight_split_method == 'by_volume':
+            total_volume = sum(
+                (item.product.volume_cbm or Decimal('0')) * item.quantity_ordered
+                for item in items if item.product
+            )
+            if total_volume == 0:
+                return {}
+            for item in items:
+                if not item.product or not item.product.volume_cbm:
+                    allocation[item.id] = Decimal('0')
+                    continue
+                item_volume = item.product.volume_cbm * item.quantity_ordered
+                allocation[item.id] = (item_volume / total_volume) * self.freight_charge
+
+        return allocation
 
     class Meta:
         ordering = ['-created_at']

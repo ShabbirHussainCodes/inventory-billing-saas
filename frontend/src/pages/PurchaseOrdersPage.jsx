@@ -17,6 +17,45 @@ const STATUS_CFG = {
   cancelled: { label: "Cancelled", cls: "bg-red-50 text-red-600" },
 }
 
+// Mirrors backend's PurchaseOrder.get_freight_allocation() exactly — this
+// is a PREVIEW only (before the order is saved), so the two must stay in
+// sync. If the split logic ever changes, update both places.
+function calculateFreightAllocation(items, freightCharge, splitMethod) {
+  const charge = parseFloat(freightCharge) || 0
+  const validItems = items.filter(i => i.product)
+  if (!validItems.length || charge === 0) return {}
+
+  const allocation = {}
+
+  if (splitMethod === 'equal') {
+    const share = charge / validItems.length
+    validItems.forEach(i => { allocation[i.id] = share })
+  } else if (splitMethod === 'by_quantity') {
+    const totalQty = validItems.reduce((s, i) => s + (i.quantity_ordered || 0), 0)
+    if (totalQty === 0) return {}
+    validItems.forEach(i => { allocation[i.id] = ((i.quantity_ordered || 0) / totalQty) * charge })
+  } else if (splitMethod === 'by_value') {
+    const totalValue = validItems.reduce((s, i) => s + (i.unit_cost || 0) * (i.quantity_ordered || 0), 0)
+    if (totalValue === 0) return {}
+    validItems.forEach(i => {
+      const val = (i.unit_cost || 0) * (i.quantity_ordered || 0)
+      allocation[i.id] = (val / totalValue) * charge
+    })
+  } else if (splitMethod === 'by_volume') {
+    const totalVolume = validItems.reduce((s, i) => {
+      const vol = i.product?.volume_cbm ? parseFloat(i.product.volume_cbm) : 0
+      return s + vol * (i.quantity_ordered || 0)
+    }, 0)
+    if (totalVolume === 0) return {}
+    validItems.forEach(i => {
+      const vol = i.product?.volume_cbm ? parseFloat(i.product.volume_cbm) : 0
+      allocation[i.id] = ((vol * (i.quantity_ordered || 0)) / totalVolume) * charge
+    })
+  }
+
+  return allocation
+}
+
 function StatusBadge({ status }) {
   const cfg = STATUS_CFG[status] || { label: status, cls: "bg-gray-100 text-gray-500" }
   return <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.cls}`}>{cfg.label}</span>
@@ -28,6 +67,8 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
   const [supplier, setSupplier] = useState('')
   const [expectedDate, setExpectedDate] = useState('')
   const [notes, setNotes] = useState('')
+  const [freightCharge, setFreightCharge] = useState('')
+  const [freightSplitMethod, setFreightSplitMethod] = useState('by_value')
   const [items, setItems] = useState([{ id: 1, product: null, quantity_ordered: 1, unit_cost: 0 }])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -57,6 +98,7 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
   }, 0)
 
   const totalCost = items.reduce((sum, i) => sum + (i.unit_cost || 0) * (i.quantity_ordered || 0), 0)
+  const freightAllocation = calculateFreightAllocation(items, freightCharge, freightSplitMethod)
 
   const handleSubmit = async () => {
     setError('')
@@ -71,6 +113,8 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
         supplier: supplier || null,
         expected_date: expectedDate || null,
         notes,
+        freight_charge: freightCharge || 0,
+        freight_split_method: freightSplitMethod,
         items: validItems.map(i => ({
           product: i.product.id,
           quantity_ordered: i.quantity_ordered,
@@ -159,9 +203,42 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
                       Volume: {(item.product.volume_cbm * item.quantity_ordered).toFixed(4)} m³
                     </p>
                   )}
+                  {item.product && freightAllocation[item.id] > 0 && (
+                    <p className="mt-1 text-[11px] text-blue-600">
+                      + {sym}{freightAllocation[item.id].toFixed(2)} freight → landed cost {sym}
+                      {(item.unit_cost + freightAllocation[item.id] / (item.quantity_ordered || 1)).toFixed(2)}/unit
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Freight / Shipping */}
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <p className="text-xs font-medium text-gray-700 mb-2">Freight / Shipping Charges (optional)</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] text-gray-400 mb-1">Total Freight Cost</label>
+                <input type="number" min="0" step="0.01" value={freightCharge}
+                  onChange={e => setFreightCharge(e.target.value)} placeholder="0.00"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-400 mb-1">Split Method</label>
+                <select value={freightSplitMethod} onChange={e => setFreightSplitMethod(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+                  <option value="by_value">By item value</option>
+                  <option value="by_quantity">By quantity</option>
+                  <option value="by_volume">By volume (CBM)</option>
+                  <option value="equal">Equally</option>
+                </select>
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] text-gray-400">
+              Freight is tracked for reporting only — it does not change product cost price.
+              {freightSplitMethod === 'by_volume' && ' Note: items without a Volume set will get ₹0 allocated.'}
+            </p>
           </div>
 
           <div>
@@ -171,13 +248,19 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
           </div>
 
           {/* Totals */}
-          <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500">Total Cost</p>
+          <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-gray-500">Item Cost</p>
               <p className="text-sm font-semibold text-gray-900">{sym}{totalCost.toLocaleString()}</p>
             </div>
+            {parseFloat(freightCharge) > 0 && (
+              <div className="flex items-center justify-between pt-2 border-t border-blue-100">
+                <p className="text-xs text-gray-500">+ Freight</p>
+                <p className="text-sm font-semibold text-gray-900">{sym}{parseFloat(freightCharge).toLocaleString()}</p>
+              </div>
+            )}
             {totalCbm > 0 && (
-              <div className="text-right">
+              <div className="flex items-center justify-between">
                 <p className="text-xs text-gray-500">Total Volume</p>
                 <p className="text-sm font-semibold text-gray-900">{totalCbm.toFixed(4)} m³</p>
               </div>
@@ -208,6 +291,7 @@ export default function PurchaseOrdersPage() {
   const [orders, setOrders] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [products, setProducts] = useState([])
+  const [freightSummary, setFreightSummary] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [toast, setToast] = useState('')
@@ -218,14 +302,17 @@ export default function PurchaseOrdersPage() {
 
   const fetchAll = () => {
     setLoading(true)
+    const now = new Date()
     Promise.all([
       inventoryAPI.getPurchaseOrders(),
       inventoryAPI.getSuppliers(),
       inventoryAPI.getProducts(),
-    ]).then(([poRes, supRes, prodRes]) => {
+      inventoryAPI.getFreightSummary(now.getFullYear(), now.getMonth() + 1),
+    ]).then(([poRes, supRes, prodRes, freightRes]) => {
       setOrders(poRes.data)
       setSuppliers(supRes.data)
       setProducts(prodRes.data)
+      setFreightSummary(freightRes.data)
     }).catch(() => setToast('Could not load purchase orders.'))
       .finally(() => setLoading(false))
   }
@@ -273,6 +360,21 @@ export default function PurchaseOrdersPage() {
         </button>
       </div>
 
+      {/* Monthly freight summary */}
+      {freightSummary && parseFloat(freightSummary.total_freight) > 0 && (
+        <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 mb-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-amber-700 font-medium">This Month's Freight/Shipping</p>
+            <p className="text-lg font-bold text-amber-800">
+              {SYM[currency] || currency + ' '}{parseFloat(freightSummary.total_freight).toLocaleString()}
+            </p>
+          </div>
+          <p className="text-xs text-amber-600">
+            across {freightSummary.order_count} received order{freightSummary.order_count !== 1 ? 's' : ''}
+          </p>
+        </div>
+      )}
+
       {loading ? (
         <div className="animate-pulse space-y-2">
           {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-20 rounded-2xl bg-gray-100" />)}
@@ -303,6 +405,9 @@ export default function PurchaseOrdersPage() {
 
                 <div className="flex items-center gap-4 mb-3 text-xs text-gray-500">
                   <span>Cost: <span className="font-medium text-gray-800">{sym}{totalCost.toLocaleString()}</span></span>
+                  {parseFloat(po.freight_charge) > 0 && (
+                    <span>Freight: <span className="font-medium text-amber-700">{sym}{parseFloat(po.freight_charge).toLocaleString()}</span></span>
+                  )}
                   {totalCbm > 0 && <span>Volume: <span className="font-medium text-gray-800">{totalCbm.toFixed(4)} m³</span></span>}
                 </div>
 

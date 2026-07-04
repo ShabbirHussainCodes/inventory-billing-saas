@@ -140,6 +140,7 @@ export const inventoryAPI = {
   getPurchaseOrder: (id) => api.get(`/inventory/purchase-orders/${id}/`),
   deletePurchaseOrder: (id) => api.delete(`/inventory/purchase-orders/${id}/`),
   updatePurchaseOrderStatus: (id, status) => api.patch(`/inventory/purchase-orders/${id}/status/`, { status }),
+  getFreightSummary: (year, month) => api.get(`/inventory/purchase-orders/freight-summary/?year=${year}&month=${month}`),
 }
 
 export const billingAPI = {
