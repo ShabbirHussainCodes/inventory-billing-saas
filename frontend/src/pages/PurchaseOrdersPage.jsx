@@ -136,7 +136,15 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
                     <div>
                       <label className="block text-[10px] text-gray-400 mb-1">Quantity</label>
                       <input type="number" min="1" value={item.quantity_ordered}
-                        onChange={e => updateItem(item.id, { quantity_ordered: Math.max(1, parseInt(e.target.value) || 1) })}
+                        onChange={e => {
+                          const val = e.target.value
+                          updateItem(item.id, { quantity_ordered: val === '' ? '' : Math.max(1, parseInt(val) || 1) })
+                        }}
+                        onBlur={() => {
+                          if (item.quantity_ordered === '' || !item.quantity_ordered) {
+                            updateItem(item.id, { quantity_ordered: 1 })
+                          }
+                        }}
                         className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
                     </div>
                     <div>

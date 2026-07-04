@@ -90,7 +90,13 @@ export default function LineItemsTable({ items, products, onItemsChange, currenc
                 </div>
                 <div className="col-span-2">
                   <input type="number" min="1" value={item.quantity}
-                    onChange={e => update(item.id, { quantity: Math.max(1, parseInt(e.target.value)||1) })}
+                    onChange={e => {
+                      const val = e.target.value
+                      update(item.id, { quantity: val === '' ? '' : Math.max(1, parseInt(val)||1) })
+                    }}
+                    onBlur={() => {
+                      if (item.quantity === '' || !item.quantity) update(item.id, { quantity: 1 })
+                    }}
                     className={`w-full rounded-lg border px-2 py-2 text-center text-sm focus:outline-none focus:ring-2 ${isOverStock ? 'border-red-300 bg-white focus:ring-red-500/30' : 'border-gray-200 bg-white focus:ring-blue-500/30'}`}
                   />
                   {isOutOfStock && <p className="mt-0.5 text-center text-[10px] text-red-500">Out of stock</p>}
@@ -149,7 +155,13 @@ export default function LineItemsTable({ items, products, onItemsChange, currenc
                   <div>
                     <p className="text-[10px] text-gray-400 mb-1">Qty</p>
                     <input type="number" min="1" value={item.quantity}
-                      onChange={e => update(item.id, { quantity: Math.max(1, parseInt(e.target.value)||1) })}
+                      onChange={e => {
+                        const val = e.target.value
+                        update(item.id, { quantity: val === '' ? '' : Math.max(1, parseInt(val)||1) })
+                      }}
+                      onBlur={() => {
+                        if (item.quantity === '' || !item.quantity) update(item.id, { quantity: 1 })
+                      }}
                       className={`w-full rounded-lg border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 ${isOverStock ? 'border-red-300 bg-white' : 'border-gray-200 bg-white'}`}
                     />
                     {isOutOfStock && <p className="mt-0.5 text-[10px] text-red-500">Out of stock</p>}
