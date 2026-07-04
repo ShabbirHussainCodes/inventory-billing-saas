@@ -143,12 +143,18 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'received_date', 'created_at', 'updated_at']
 
     def get_freight_allocation(self, obj):
+        from decimal import Decimal
         allocation = obj.get_freight_allocation()
         result = []
         for item in obj.items.all():
-            allocated = allocation.get(item.id, 0)
+            # Bug fix: must use Decimal('0'), not plain int 0 — dividing
+            # int 0 by quantity_ordered produces a Python float (0.0),
+            # and Decimal + float raises TypeError. This caused a 500
+            # error on every purchase order without freight_charge set
+            # (i.e. almost all of them, since freight is optional).
+            allocated = allocation.get(item.id, Decimal('0'))
             landed_unit_cost = item.unit_cost + (
-                allocated / item.quantity_ordered if item.quantity_ordered else 0
+                allocated / item.quantity_ordered if item.quantity_ordered else Decimal('0')
             )
             result.append({
                 'item_id': str(item.id),
