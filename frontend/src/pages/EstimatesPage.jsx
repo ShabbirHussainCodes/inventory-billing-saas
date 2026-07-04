@@ -40,7 +40,10 @@ function CreateEstimateModal({ customers, products, currency, onClose, onCreated
   const updateItem = (id, patch) => setItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i))
 
   const handleProductSelect = (id, product) => {
-    updateItem(id, { product, unit_price: product ? product.selling_price : 0 })
+    // Bug fix: product.selling_price API se STRING aata hai (Django
+    // DecimalField serialization), number nahi — parseFloat zaroori hai,
+    // warna baad mein string-concatenation se arithmetic crash karta hai.
+    updateItem(id, { product, unit_price: product ? parseFloat(product.selling_price) || 0 : 0 })
   }
 
   const totalAmount = items.reduce((sum, i) => sum + (i.unit_price || 0) * (i.quantity || 0), 0)

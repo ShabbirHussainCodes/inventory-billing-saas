@@ -152,8 +152,12 @@ function CreatePOModal({ suppliers, products, currency, onClose, onCreated }) {
   const handleProductSelect = (id, product) => {
     updateItem(id, {
       product,
-      // Cost price ko default unit cost bana do — user edit kar sakta hai
-      unit_cost: product ? product.cost_price : 0,
+      // Bug fix: product.cost_price API se STRING aata hai (Django
+      // DecimalField default serialization), number nahi. Bina parseFloat
+      // ke, baad mein "string + number" arithmetic string-concatenation
+      // ban jaata tha, jiske baad .toFixed() crash karta tha (TypeError:
+      // toFixed is not a function) — yehi black-screen crash ka root cause tha.
+      unit_cost: product ? parseFloat(product.cost_price) || 0 : 0,
       // Product ka default volume suggestion ki tarah bhar do — lekin
       // yeh sirf starting point hai, user isse is order ke liye
       // (supplier ke bataye actual CBM ke hisaab se) edit kar sakta hai
