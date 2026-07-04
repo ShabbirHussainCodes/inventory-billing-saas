@@ -18,6 +18,7 @@ function ProductModal({ product, categories, suppliers, onClose, onSave, saving 
     reorder_point: product?.reorder_point ?? 10,
     tax_rate: product?.tax_rate ?? 0,
     volume_cbm: product?.volume_cbm || "",
+    units_per_box: product?.units_per_box || 1,
   })
   const [err, setErr] = useState("")
 
@@ -122,10 +123,18 @@ function ProductModal({ product, categories, suppliers, onClose, onSave, saving 
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">
-              Volume per unit (m³) <span className="text-gray-400">— optional, for shipping/purchase orders</span>
+              Volume per Box (m³) <span className="text-gray-400">— as told by supplier, optional</span>
             </label>
             <input name="volume_cbm" type="number" step="0.0001" min="0" value={form.volume_cbm} onChange={handle}
-              placeholder="e.g. 0.0250"
+              placeholder="e.g. 0.5000"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">
+              Units per Box <span className="text-gray-400">— how many pieces fit in that box</span>
+            </label>
+            <input name="units_per_box" type="number" min="1" step="1" value={form.units_per_box} onChange={handle}
+              placeholder="e.g. 4"
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
           </div>
           {err && <p className="text-xs text-red-500">{err}</p>}

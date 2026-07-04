@@ -71,6 +71,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'stock_quantity',
             'reorder_point',
             'volume_cbm',
+            'units_per_box',
             'incoming_quantity',
             'is_low_stock',
             'tax_rate',
@@ -113,6 +114,9 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
         source='product.volume_cbm', max_digits=10, decimal_places=4,
         read_only=True, allow_null=True
     )
+    units_per_box = serializers.IntegerField(
+        source='product.units_per_box', read_only=True, default=1
+    )
 
     class Meta:
         model = PurchaseOrderItem
@@ -120,6 +124,7 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
             'id', 'product', 'product_name',
             'quantity_ordered', 'quantity_received',
             'unit_cost', 'volume_cbm', 'volume_cbm_override',
+            'units_per_box', 'units_per_box_override',
         ]
         read_only_fields = ['id', 'quantity_received']
 
@@ -197,6 +202,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
                 quantity_ordered=item_data['quantity_ordered'],
                 unit_cost=item_data['unit_cost'],
                 volume_cbm_override=item_data.get('volume_cbm_override'),
+                units_per_box_override=item_data.get('units_per_box_override'),
             )
 
         return purchase_order

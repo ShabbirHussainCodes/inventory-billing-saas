@@ -97,12 +97,17 @@ class Product(models.Model):
     reorder_point = models.IntegerField(default=10)
 
     # --- Shipping / Logistics ---
-    # Cubic meters per unit — optional, used for calculating total shipment
-    # volume on Purchase Orders. Only relevant for businesses ordering in
-    # bulk/containers from suppliers.
+    # IMPORTANT: this is volume PER BOX (as supplier states it), NOT per
+    # single unit. Real-world suppliers quote box/carton volume, not
+    # per-piece volume — using per-unit here caused inflated totals
+    # (e.g. a supplier's "0.5 m³ box of 4 TVs" was being read as "0.5 m³
+    # per TV", massively overstating shipment volume).
     volume_cbm = models.DecimalField(
         max_digits=10, decimal_places=4, null=True, blank=True
     )
+    # How many individual units fit in one box of the above volume.
+    # Per-unit volume for calculations = volume_cbm / units_per_box.
+    units_per_box = models.IntegerField(default=1)
 
     # --- Tax ---
     # Global ready — GST/VAT/Sales Tax sab handle karega
@@ -306,11 +311,24 @@ class PurchaseOrder(models.Model):
             # Override takes priority — supplier-told CBM for THIS order
             # line, falling back to the product's own default volume.
             def get_item_volume(item):
-                if item.volume_cbm_override is not None:
-                    return item.volume_cbm_override
-                if item.product and item.product.volume_cbm:
-                    return item.product.volume_cbm
-                return Decimal('0')
+                # Box volume — override takes priority, else product default
+                box_volume = (
+                    item.volume_cbm_override if item.volume_cbm_override is not None
+                    else (item.product.volume_cbm if item.product and item.product.volume_cbm else None)
+                )
+                if box_volume is None:
+                    return Decimal('0')
+
+                # Units per box — override takes priority, else product default
+                units = (
+                    item.units_per_box_override if item.units_per_box_override
+                    else (item.product.units_per_box if item.product and item.product.units_per_box else 1)
+                )
+                if not units or units <= 0:
+                    units = 1  # safety fallback — never divide by zero
+
+                # True per-unit volume = box volume ÷ units in that box
+                return box_volume / Decimal(units)
 
             total_volume = sum(get_item_volume(item) * item.quantity_ordered for item in items)
             if total_volume == 0:
@@ -362,6 +380,9 @@ class PurchaseOrderItem(models.Model):
     volume_cbm_override = models.DecimalField(
         max_digits=10, decimal_places=4, null=True, blank=True
     )
+    # Same override pattern as volume_cbm_override — supplier may pack
+    # this specific order differently than the product's default.
+    units_per_box_override = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.product_name} × {self.quantity_ordered}"
