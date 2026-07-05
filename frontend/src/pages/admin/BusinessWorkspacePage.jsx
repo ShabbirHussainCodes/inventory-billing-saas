@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { superAdminAPI } from "../../services/api"
+import WorkspaceDashboard from "../../components/workspace/WorkspaceDashboard"
 import WorkspaceInventory from "../../components/workspace/WorkspaceInventory"
 import WorkspaceCustomers from "../../components/workspace/WorkspaceCustomers"
 import WorkspaceInvoices from "../../components/workspace/WorkspaceInvoices"
@@ -11,7 +12,7 @@ import WorkspaceReports from "../../components/workspace/WorkspaceReports"
 // soon: true  → coming soon (disabled)
 
 const WORKSPACE_NAV = [
-  { key: "dashboard",  label: "Dashboard",  icon: "▦", soon: true },
+  { key: "dashboard",  label: "Dashboard",  icon: "▦", soon: false },
   { key: "inventory",  label: "Inventory",  icon: "⊟", soon: false },
   { key: "customers",  label: "Customers",  icon: "◎", soon: false },
   { key: "invoices",   label: "Invoices",   icon: "⊞", soon: false },
@@ -48,6 +49,10 @@ function EditConfirmModal({ tenantName, onConfirm, onCancel, loading }) {
 // ─── Section content renderer ─────────────────────────────────────────────────
 
 function WorkspaceContent({ activeSection, isEditMode, tenantName }) {
+  if (activeSection === "dashboard") {
+    return <WorkspaceDashboard isEditMode={isEditMode} />
+  }
+
   if (activeSection === "inventory") {
     return <WorkspaceInventory isEditMode={isEditMode} />
   }
@@ -96,7 +101,7 @@ export default function BusinessWorkspacePage() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [activeSection, setActiveSection] = useState("inventory")
+  const [activeSection, setActiveSection] = useState("dashboard")
   const [confirmEdit, setConfirmEdit] = useState(false)
   const [modeLoading, setModeLoading] = useState(false)
   const [exiting, setExiting] = useState(false)
