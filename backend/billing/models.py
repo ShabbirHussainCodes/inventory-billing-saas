@@ -408,3 +408,49 @@ class HealthScoreSnapshot(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class Expense(models.Model):
+    """
+    General business expense tracking — rent, salary, utilities, etc.
+    Deliberately SEPARATE from Purchase Orders (which are inventory/stock
+    related) and does NOT affect Invoice-based profit calculations
+    anywhere else in the app — this is a standalone tracking tool, not
+    a step toward double-entry accounting (consistent with BillingMars's
+    "Decision Engine, not accounting software" positioning).
+    """
+    CATEGORY_CHOICES = [
+        ('rent',       'Rent'),
+        ('salary',     'Salary'),
+        ('utilities',  'Utilities'),
+        ('marketing',  'Marketing'),
+        ('supplies',   'Supplies'),
+        ('transport',  'Transport'),
+        ('other',      'Other'),
+    ]
+    PAYMENT_METHOD_CHOICES = [
+        ('cash',  'Cash'),
+        ('bank',  'Bank Transfer'),
+        ('card',  'Card'),
+        ('upi',   'UPI'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, related_name='expenses')
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='other')
+    title = models.CharField(max_length=255)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    expense_date = models.DateField()
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, blank=True)
+    notes = models.TextField(blank=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='expenses'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-expense_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.title} — ₹{self.amount}"

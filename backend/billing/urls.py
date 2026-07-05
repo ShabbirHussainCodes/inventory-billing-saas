@@ -27,4 +27,9 @@ urlpatterns = [
     # Profit Intelligence
     path('profit-intelligence/', views.profit_intelligence, name='profit-intelligence'),
     path('health-score/', views.business_health_score, name='business-health-score'),
+
+    # Expenses
+    path('expenses/', views.expense_list, name='expense-list'),
+    path('expenses/<uuid:pk>/', views.expense_detail, name='expense-detail'),
+    path('expenses/summary/', views.expense_summary, name='expense-summary'),
 ]

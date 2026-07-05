@@ -2,12 +2,13 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .models import Customer, Invoice, Estimate
+from .models import Customer, Invoice, Estimate, Expense
 from .serializers import (
     CustomerSerializer,
     InvoiceSerializer,
     InvoiceCreateSerializer,
     EstimateSerializer,
+    ExpenseSerializer,
 )
 from superadmin.utils import get_active_tenant, is_edit_mode
 
@@ -1065,5 +1066,91 @@ def business_health_score(request):
             'estimate_conversion_rate': conversion_rate,
             'po_delay_rate': delay_rate,
         },
+        'currency': tenant.currency,
+    })
+
+
+# ─── EXPENSE VIEWS ────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def expense_list(request):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    if request.method == 'GET':
+        expenses = Expense.objects.filter(tenant=tenant)
+        return Response(ExpenseSerializer(expenses, many=True).data)
+
+    elif request.method == 'POST':
+        serializer = ExpenseSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(tenant=tenant, created_by=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def expense_detail(request, pk):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    try:
+        expense = Expense.objects.get(pk=pk, tenant=tenant)
+    except Expense.DoesNotExist:
+        return Response({'error': 'Expense not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    expense.delete()
+    return Response({'message': 'Expense deleted.'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def expense_summary(request):
+    """
+    Monthly total + category-wise breakdown. Defaults to current month;
+    accepts ?year=&month= query params for other months.
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    from django.db.models import Sum
+    from django.db.models.functions import Coalesce
+    from decimal import Decimal
+    from django.utils import timezone
+
+    now = timezone.now()
+    try:
+        year = int(request.query_params.get('year', now.year))
+        month = int(request.query_params.get('month', now.month))
+    except ValueError:
+        return Response({'error': 'Invalid year/month.'}, status=400)
+
+    expenses_qs = Expense.objects.filter(
+        tenant=tenant, expense_date__year=year, expense_date__month=month
+    )
+
+    total = expenses_qs.aggregate(total=Coalesce(Sum('amount'), Decimal('0.00')))['total']
+
+    by_category = expenses_qs.values('category').annotate(
+        total=Coalesce(Sum('amount'), Decimal('0.00'))
+    ).order_by('-total')
+
+    # Map category codes to display labels
+    category_labels = dict(Expense.CATEGORY_CHOICES)
+
+    return Response({
+        'year': year,
+        'month': month,
+        'total': total,
+        'by_category': [{
+            'category': c['category'],
+            'category_label': category_labels.get(c['category'], c['category']),
+            'total': c['total'],
+        } for c in by_category],
         'currency': tenant.currency,
     })

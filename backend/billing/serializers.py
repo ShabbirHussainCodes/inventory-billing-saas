@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Customer, Invoice, InvoiceItem, Estimate, EstimateItem
+from .models import Customer, Invoice, InvoiceItem, Estimate, EstimateItem, Expense
 from inventory.models import Product
 
 
@@ -475,3 +475,15 @@ class EstimateSerializer(serializers.ModelSerializer):
         estimate.save()
 
         return estimate
+
+
+class ExpenseSerializer(serializers.ModelSerializer):
+    category_label = serializers.CharField(source='get_category_display', read_only=True)
+
+    class Meta:
+        model = Expense
+        fields = [
+            'id', 'category', 'category_label', 'title', 'amount',
+            'expense_date', 'payment_method', 'notes', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
