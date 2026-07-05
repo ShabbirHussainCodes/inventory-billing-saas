@@ -6,6 +6,16 @@ import { getUser } from "../utils/auth"
 
 // ─── Reuse StatCard from admin ────────────────────────────────────────────────
 
+// Score-to-label mapping — a reasonable design choice (borrowed from
+// common dashboard conventions), not a scientifically validated scale.
+function getHealthStatus(score) {
+  if (score >= 90) return { label: 'Excellent', emoji: '🟢', color: 'text-green-600' }
+  if (score >= 75) return { label: 'Good', emoji: '🟢', color: 'text-green-600' }
+  if (score >= 60) return { label: 'Fair', emoji: '🟡', color: 'text-amber-500' }
+  if (score >= 40) return { label: 'Needs Attention', emoji: '🟠', color: 'text-orange-500' }
+  return { label: 'Critical', emoji: '🔴', color: 'text-red-600' }
+}
+
 function StatCard({ title, value, sub, variant = "default" }) {
   const colors = {
     default: "text-gray-900",
@@ -68,6 +78,7 @@ export default function DashboardPage() {
   const [invoices, setInvoices] = useState([])
   const [cashflow, setCashflow] = useState(null)
   const [healthScore, setHealthScore] = useState(null)
+  const [lastUpdated, setLastUpdated] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [closingDay, setClosingDay] = useState(false)
@@ -91,6 +102,7 @@ export default function DashboardPage() {
       setInvoices(invoicesRes.data.slice(0, 5))
       setCashflow(cashflowRes.data)
       setHealthScore(healthRes.data)
+      setLastUpdated(new Date())
     } catch (err) {
       console.error("Dashboard fetch error:", err)
       setError("Could not load dashboard. Check your connection and try again.")
@@ -241,24 +253,41 @@ export default function DashboardPage() {
       {/* Business Health Score */}
       {healthScore && (
         <div className="rounded-2xl border border-gray-200 bg-white p-5 mb-4">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-1">
             <p className="text-sm font-medium text-gray-900">Business Health</p>
-            <p className={`text-2xl font-bold ${
-              healthScore.total_score >= 70 ? 'text-green-600' :
-              healthScore.total_score >= 40 ? 'text-amber-500' : 'text-red-600'
-            }`}>
-              {healthScore.total_score}<span className="text-sm text-gray-400">/100</span>
-            </p>
+            <div className="text-right">
+              <p className={`text-2xl font-bold ${getHealthStatus(healthScore.total_score).color}`}>
+                {healthScore.total_score}<span className="text-sm text-gray-400">/100</span>
+              </p>
+              <p className={`text-xs font-medium -mt-1 ${getHealthStatus(healthScore.total_score).color}`}>
+                {getHealthStatus(healthScore.total_score).emoji} {getHealthStatus(healthScore.total_score).label}
+              </p>
+            </div>
           </div>
 
-          {/* Breakdown */}
+          {lastUpdated && (
+            <p className="text-[10px] text-gray-300 mb-3">
+              Updated {lastUpdated.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
+
+          {/* Breakdown with progress bars */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-            {Object.entries(healthScore.breakdown).map(([key, b]) => (
-              <div key={key} className="rounded-lg bg-gray-50 px-2.5 py-2">
-                <p className="text-[10px] text-gray-400">{b.label}</p>
-                <p className="text-sm font-semibold text-gray-800">{b.score}/{b.max}</p>
-              </div>
-            ))}
+            {Object.entries(healthScore.breakdown).map(([key, b]) => {
+              const pct = b.max > 0 ? (b.score / b.max) * 100 : 0
+              return (
+                <div key={key} className="rounded-lg bg-gray-50 px-2.5 py-2">
+                  <p className="text-[10px] text-gray-400">{b.label}</p>
+                  <p className="text-sm font-semibold text-gray-800 mb-1">{b.score}/{b.max}</p>
+                  <div className="w-full bg-gray-200 rounded-full h-1 overflow-hidden">
+                    <div
+                      className={`h-1 rounded-full ${pct >= 70 ? 'bg-green-500' : pct >= 40 ? 'bg-amber-400' : 'bg-red-500'}`}
+                      style={{ width: `${Math.min(pct, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
           </div>
 
           {/* Why the score is what it is */}
