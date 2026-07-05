@@ -862,14 +862,33 @@ def business_health_score(request):
     overdue_count = overdue_agg['count']
 
     # Thresholds below are a design choice, not a proven formula.
+    # Split into two genuinely distinct signals: HOW MANY invoices are
+    # overdue (frequency/count) vs HOW MUCH money is at risk (severity).
+    # Honest limitation: amount thresholds below are absolute rupee
+    # values, not scaled to the business's typical revenue size — ₹50,000
+    # overdue means something very different for a large vs small
+    # business, and this view doesn't have an easy "typical scale"
+    # baseline to normalize against without restructuring. Noted as a
+    # known simplification, not hidden.
     if overdue_count == 0:
-        cash_score = 35
+        count_sub = 15
     elif overdue_count <= 2:
-        cash_score = 25
+        count_sub = 10
     elif overdue_count <= 5:
-        cash_score = 15
+        count_sub = 5
     else:
-        cash_score = 5
+        count_sub = 1
+
+    if overdue_amount == 0:
+        amount_sub = 20
+    elif overdue_amount <= 10000:
+        amount_sub = 14
+    elif overdue_amount <= 50000:
+        amount_sub = 7
+    else:
+        amount_sub = 2
+
+    cash_score = count_sub + amount_sub
 
     if overdue_count > 0:
         reasons.append(f"₹{overdue_amount:,.2f} overdue across {overdue_count} invoice(s)")
@@ -1044,6 +1063,10 @@ def business_health_score(request):
             'operations':  {'score': ops_score, 'max': 15, 'label': 'Operations'},
         },
         'sub_breakdown': {
+            'cash': [
+                {'label': 'Overdue Count', 'score': count_sub, 'max': 15},
+                {'label': 'Overdue Amount', 'score': amount_sub, 'max': 20},
+            ],
             'inventory': [
                 {'label': 'Low Stock', 'score': low_stock_sub, 'max': 12},
                 {'label': 'Dead Stock', 'score': dead_stock_sub, 'max': 13},
