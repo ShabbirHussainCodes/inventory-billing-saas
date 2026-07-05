@@ -67,6 +67,7 @@ export default function DashboardPage() {
   const [lowStock, setLowStock] = useState([])
   const [invoices, setInvoices] = useState([])
   const [cashflow, setCashflow] = useState(null)
+  const [healthScore, setHealthScore] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [closingDay, setClosingDay] = useState(false)
@@ -78,16 +79,18 @@ export default function DashboardPage() {
     setLoading(true)
     setError("")
     try {
-      const [summaryRes, lowStockRes, invoicesRes, cashflowRes] = await Promise.all([
+      const [summaryRes, lowStockRes, invoicesRes, cashflowRes, healthRes] = await Promise.all([
         billingAPI.getSummary(),
         inventoryAPI.getLowStock(),
         billingAPI.getInvoices(),
         billingAPI.getCashflow(),
+        billingAPI.getHealthScore(),
       ])
       setSummary(summaryRes.data)
       setLowStock(lowStockRes.data.products || [])
       setInvoices(invoicesRes.data.slice(0, 5))
       setCashflow(cashflowRes.data)
+      setHealthScore(healthRes.data)
     } catch (err) {
       console.error("Dashboard fetch error:", err)
       setError("Could not load dashboard. Check your connection and try again.")
@@ -234,6 +237,55 @@ export default function DashboardPage() {
           sub="Collected"
         />
       </div>
+
+      {/* Business Health Score */}
+      {healthScore && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-medium text-gray-900">Business Health</p>
+            <p className={`text-2xl font-bold ${
+              healthScore.total_score >= 70 ? 'text-green-600' :
+              healthScore.total_score >= 40 ? 'text-amber-500' : 'text-red-600'
+            }`}>
+              {healthScore.total_score}<span className="text-sm text-gray-400">/100</span>
+            </p>
+          </div>
+
+          {/* Breakdown */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+            {Object.entries(healthScore.breakdown).map(([key, b]) => (
+              <div key={key} className="rounded-lg bg-gray-50 px-2.5 py-2">
+                <p className="text-[10px] text-gray-400">{b.label}</p>
+                <p className="text-sm font-semibold text-gray-800">{b.score}/{b.max}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Why the score is what it is */}
+          {healthScore.reasons.length > 0 && (
+            <div className="mb-3">
+              <p className="text-xs text-gray-400 mb-1">Why:</p>
+              <ul className="text-xs text-gray-600 space-y-0.5">
+                {healthScore.reasons.map((r, i) => <li key={i}>• {r}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {/* Top actions */}
+          {healthScore.recommended_actions.length > 0 && (
+            <div className="pt-3 border-t border-gray-100">
+              <p className="text-xs text-gray-400 mb-1.5">Recommended actions:</p>
+              <ol className="text-xs text-gray-700 space-y-1">
+                {healthScore.recommended_actions.map((a, i) => (
+                  <li key={i} className="flex gap-1.5">
+                    <span className="text-gray-400">{i + 1}.</span> {a}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Business Brief — v1 Decision Engine, max 3 suggestions */}
       {businessBrief && businessBrief.length === 0 && (

@@ -818,3 +818,199 @@ def profit_intelligence(request):
             'margin_percent': margin(last_month_agg['revenue'], last_month_agg['profit']),
         },
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def business_health_score(request):
+    """
+    Business Health Score — a DESIGNED scoring model, not a scientifically
+    validated formula. Every weight and threshold below is a reasonable
+    judgment call, not an industry standard. The breakdown is always shown
+    alongside the total score — never just a bare number — specifically
+    so this doesn't become an unexplainable black box.
+
+    Weights: Cash 35 / Sales 25 / Inventory 25 / Operations 15 (out of 100)
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    from django.db.models import Sum, Count, Max, F
+    from django.db.models.functions import Coalesce
+    from decimal import Decimal
+    from django.utils import timezone
+    from inventory.models import Product, PurchaseOrder, StockMovement
+    from .models import Estimate
+
+    today = timezone.now().date()
+    now = timezone.now()
+    reasons = []
+    actions = []  # each: {'weight': number for sorting, 'text': str}
+
+    # ══════════════════════════════════════════════════════════
+    # 1. CASH HEALTH (35 points) — based on overdue invoices
+    # ══════════════════════════════════════════════════════════
+    overdue_agg = Invoice.objects.filter(
+        tenant=tenant, status='sent', due_date__isnull=False, due_date__lt=today,
+    ).aggregate(
+        amount=Coalesce(Sum('total_amount'), Decimal('0.00')),
+        count=Count('id'),
+    )
+    overdue_amount = overdue_agg['amount']
+    overdue_count = overdue_agg['count']
+
+    # Thresholds below are a design choice, not a proven formula.
+    if overdue_count == 0:
+        cash_score = 35
+    elif overdue_count <= 2:
+        cash_score = 25
+    elif overdue_count <= 5:
+        cash_score = 15
+    else:
+        cash_score = 5
+
+    if overdue_count > 0:
+        reasons.append(f"₹{overdue_amount:,.2f} overdue across {overdue_count} invoice(s)")
+        actions.append({
+            'weight': float(overdue_amount),
+            'text': f'Collect {overdue_count} overdue invoice(s) worth ₹{overdue_amount:,.2f}',
+        })
+
+    # ══════════════════════════════════════════════════════════
+    # 2. SALES HEALTH (25 points) — this month vs last month revenue
+    # ══════════════════════════════════════════════════════════
+    this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).date()
+    if this_month_start.month == 1:
+        last_month_start = this_month_start.replace(year=this_month_start.year - 1, month=12)
+    else:
+        last_month_start = this_month_start.replace(month=this_month_start.month - 1)
+    last_month_end = this_month_start - timezone.timedelta(days=1)
+
+    this_month_rev = Invoice.objects.filter(
+        tenant=tenant, status__in=['sent', 'paid'], invoice_date__gte=this_month_start
+    ).aggregate(total=Coalesce(Sum('total_amount'), Decimal('0.00')))['total']
+
+    last_month_rev = Invoice.objects.filter(
+        tenant=tenant, status__in=['sent', 'paid'],
+        invoice_date__gte=last_month_start, invoice_date__lte=last_month_end
+    ).aggregate(total=Coalesce(Sum('total_amount'), Decimal('0.00')))['total']
+
+    revenue_change_percent = None
+    if last_month_rev > 0:
+        revenue_change_percent = round(float((this_month_rev - last_month_rev) / last_month_rev) * 100, 1)
+
+    # Honest: with no last-month baseline, we can't judge a "trend" at
+    # all — this gives a neutral score rather than pretending to know.
+    if last_month_rev == 0:
+        sales_score = 15 if this_month_rev > 0 else 8
+    elif revenue_change_percent >= 10:
+        sales_score = 25
+    elif revenue_change_percent >= 0:
+        sales_score = 20
+    elif revenue_change_percent >= -20:
+        sales_score = 12
+    else:
+        sales_score = 5
+
+    if revenue_change_percent is not None and revenue_change_percent < 0:
+        reasons.append(f"Revenue down {abs(revenue_change_percent)}% vs last month")
+
+    # ══════════════════════════════════════════════════════════
+    # 3. INVENTORY HEALTH (25 points) — low stock + dead stock
+    # ══════════════════════════════════════════════════════════
+    low_stock_count = Product.objects.filter(
+        tenant=tenant, is_active=True, stock_quantity__lte=F('reorder_point')
+    ).count()
+
+    # Same 30-day default used in Business Brief — not a proven threshold,
+    # kept consistent with that feature rather than inventing a new number.
+    DEAD_STOCK_DAYS = 30
+    cutoff = now - timezone.timedelta(days=DEAD_STOCK_DAYS)
+    dead_stock_count = 0
+    dead_stock_names = []
+    for p in Product.objects.filter(tenant=tenant, is_active=True, stock_quantity__gt=0):
+        last_sale = StockMovement.objects.filter(
+            tenant=tenant, product=p, movement_type='out'
+        ).aggregate(last=Max('created_at'))['last']
+        if last_sale is None or last_sale < cutoff:
+            dead_stock_count += 1
+            dead_stock_names.append(p.name)
+
+    inventory_issues = low_stock_count + dead_stock_count
+    if inventory_issues == 0:
+        inventory_score = 25
+    elif inventory_issues <= 2:
+        inventory_score = 18
+    elif inventory_issues <= 5:
+        inventory_score = 10
+    else:
+        inventory_score = 3
+
+    if dead_stock_count > 0:
+        reasons.append(f"{dead_stock_count} dead stock item(s)")
+        actions.append({
+            'weight': dead_stock_count * 1000,
+            'text': f'Clear dead stock: {", ".join(dead_stock_names[:2])}'
+                    + (f' and {dead_stock_count - 2} more' if dead_stock_count > 2 else ''),
+        })
+    if low_stock_count > 0:
+        reasons.append(f"{low_stock_count} product(s) low on stock")
+        actions.append({
+            'weight': low_stock_count * 900,
+            'text': f'Restock {low_stock_count} low-stock product(s)',
+        })
+
+    # ══════════════════════════════════════════════════════════
+    # 4. OPERATIONS (15 points) — estimate conversion + PO delays
+    # ══════════════════════════════════════════════════════════
+    total_estimates = Estimate.objects.filter(
+        tenant=tenant, status__in=['accepted', 'rejected', 'converted']
+    ).count()
+    converted_estimates = Estimate.objects.filter(tenant=tenant, status='converted').count()
+    conversion_rate = round((converted_estimates / total_estimates) * 100, 1) if total_estimates > 0 else None
+
+    received_pos = PurchaseOrder.objects.filter(
+        tenant=tenant, status='received', expected_date__isnull=False
+    )
+    total_received = received_pos.count()
+    delayed_pos = received_pos.filter(received_date__gt=F('expected_date')).count()
+    delay_rate = round((delayed_pos / total_received) * 100, 1) if total_received > 0 else None
+
+    ops_score = 15
+    if conversion_rate is not None and conversion_rate < 50:
+        ops_score -= 5
+    if delay_rate is not None and delay_rate > 30:
+        ops_score -= 5
+    ops_score = max(0, ops_score)
+
+    if delay_rate is not None and delay_rate > 30:
+        reasons.append(f"{delay_rate}% of purchase orders arrived later than expected")
+
+    total_score = cash_score + sales_score + inventory_score + ops_score
+
+    top_actions = [a['text'] for a in sorted(actions, key=lambda a: a['weight'], reverse=True)[:3]]
+
+    return Response({
+        'total_score': total_score,
+        'breakdown': {
+            'cash':        {'score': cash_score, 'max': 35, 'label': 'Cash Health'},
+            'sales':       {'score': sales_score, 'max': 25, 'label': 'Sales Health'},
+            'inventory':   {'score': inventory_score, 'max': 25, 'label': 'Inventory Health'},
+            'operations':  {'score': ops_score, 'max': 15, 'label': 'Operations'},
+        },
+        'reasons': reasons,
+        'recommended_actions': top_actions,
+        'details': {
+            'overdue_amount': overdue_amount,
+            'overdue_count': overdue_count,
+            'revenue_this_month': this_month_rev,
+            'revenue_last_month': last_month_rev,
+            'revenue_change_percent': revenue_change_percent,
+            'low_stock_count': low_stock_count,
+            'dead_stock_count': dead_stock_count,
+            'estimate_conversion_rate': conversion_rate,
+            'po_delay_rate': delay_rate,
+        },
+        'currency': tenant.currency,
+    })
