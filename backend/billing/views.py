@@ -1140,6 +1140,22 @@ def expense_summary(request):
         total=Coalesce(Sum('amount'), Decimal('0.00'))
     ).order_by('-total')
 
+    # Previous month (relative to the requested month, not necessarily
+    # "today") — lets the month navigator show a comparison for ANY
+    # month browsed, not just the current one.
+    if month == 1:
+        prev_year, prev_month = year - 1, 12
+    else:
+        prev_year, prev_month = year, month - 1
+
+    prev_total = Expense.objects.filter(
+        tenant=tenant, expense_date__year=prev_year, expense_date__month=prev_month
+    ).aggregate(total=Coalesce(Sum('amount'), Decimal('0.00')))['total']
+
+    change_percent = None
+    if prev_total > 0:
+        change_percent = round(float((total - prev_total) / prev_total) * 100, 1)
+
     # Map category codes to display labels
     category_labels = dict(Expense.CATEGORY_CHOICES)
 
@@ -1147,6 +1163,8 @@ def expense_summary(request):
         'year': year,
         'month': month,
         'total': total,
+        'previous_month_total': prev_total,
+        'change_percent': change_percent,
         'by_category': [{
             'category': c['category'],
             'category_label': category_labels.get(c['category'], c['category']),

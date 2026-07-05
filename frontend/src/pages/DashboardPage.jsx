@@ -16,7 +16,7 @@ function getHealthStatus(score) {
   return { label: 'Critical', emoji: '🔴', color: 'text-red-600' }
 }
 
-function StatCard({ title, value, sub, variant = "default" }) {
+function StatCard({ title, value, sub, variant = "default", onClick }) {
   const colors = {
     default: "text-gray-900",
     success: "text-green-600",
@@ -24,7 +24,10 @@ function StatCard({ title, value, sub, variant = "default" }) {
     info:    "text-blue-600",
   }
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5">
+    <div
+      onClick={onClick}
+      className={`rounded-2xl border border-gray-200 bg-white p-5 ${onClick ? 'cursor-pointer hover:border-blue-200 hover:shadow-sm transition' : ''}`}
+    >
       <p className="text-sm text-gray-500 mb-1.5">{title}</p>
       <p className={`text-2xl font-semibold ${colors[variant]}`}>{value}</p>
       {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
@@ -78,6 +81,7 @@ export default function DashboardPage() {
   const [invoices, setInvoices] = useState([])
   const [cashflow, setCashflow] = useState(null)
   const [healthScore, setHealthScore] = useState(null)
+  const [expenseSummary, setExpenseSummary] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [expandedBreakdown, setExpandedBreakdown] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -91,18 +95,21 @@ export default function DashboardPage() {
     setLoading(true)
     setError("")
     try {
-      const [summaryRes, lowStockRes, invoicesRes, cashflowRes, healthRes] = await Promise.all([
+      const now = new Date()
+      const [summaryRes, lowStockRes, invoicesRes, cashflowRes, healthRes, expenseRes] = await Promise.all([
         billingAPI.getSummary(),
         inventoryAPI.getLowStock(),
         billingAPI.getInvoices(),
         billingAPI.getCashflow(),
         billingAPI.getHealthScore(),
+        billingAPI.getExpenseSummary(now.getFullYear(), now.getMonth() + 1),
       ])
       setSummary(summaryRes.data)
       setLowStock(lowStockRes.data.products || [])
       setInvoices(invoicesRes.data.slice(0, 5))
       setCashflow(cashflowRes.data)
       setHealthScore(healthRes.data)
+      setExpenseSummary(expenseRes.data)
       setLastUpdated(new Date())
     } catch (err) {
       console.error("Dashboard fetch error:", err)
@@ -225,7 +232,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
         <StatCard
           title="Total Revenue"
           value={`${currency} ${parseFloat(summary?.total_revenue || 0).toLocaleString()}`}
@@ -248,6 +255,13 @@ export default function DashboardPage() {
           value={summary?.paid_invoices || 0}
           variant="success"
           sub="Collected"
+        />
+        <StatCard
+          title="This Month's Expenses"
+          value={`${currency} ${parseFloat(expenseSummary?.total || 0).toLocaleString()}`}
+          variant="warning"
+          sub="Click for report →"
+          onClick={() => navigate('/expenses')}
         />
       </div>
 

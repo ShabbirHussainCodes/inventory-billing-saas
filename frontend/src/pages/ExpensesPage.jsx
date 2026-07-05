@@ -142,20 +142,46 @@ export default function ExpensesPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [toast, setToast] = useState('')
 
+  const now = new Date()
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear())
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1) // 1-12
+  const [summaryLoading, setSummaryLoading] = useState(true)
+
+  const fetchExpenseList = () => {
+    billingAPI.getExpenses()
+      .then(res => setExpenses(res.data))
+      .catch(() => setToast('Could not load expenses.'))
+  }
+
+  const fetchSummary = (year, month) => {
+    setSummaryLoading(true)
+    billingAPI.getExpenseSummary(year, month)
+      .then(res => setSummary(res.data))
+      .catch(() => setToast('Could not load expense report.'))
+      .finally(() => setSummaryLoading(false))
+  }
+
   const fetchAll = () => {
     setLoading(true)
-    const now = new Date()
-    Promise.all([
-      billingAPI.getExpenses(),
-      billingAPI.getExpenseSummary(now.getFullYear(), now.getMonth() + 1),
-    ]).then(([expRes, sumRes]) => {
-      setExpenses(expRes.data)
-      setSummary(sumRes.data)
-    }).catch(() => setToast('Could not load expenses.'))
-      .finally(() => setLoading(false))
+    fetchExpenseList()
+    setLoading(false)
   }
 
   useEffect(() => { fetchAll() }, [])
+  useEffect(() => { fetchSummary(selectedYear, selectedMonth) }, [selectedYear, selectedMonth])
+
+  const goToPrevMonth = () => {
+    if (selectedMonth === 1) { setSelectedYear(y => y - 1); setSelectedMonth(12) }
+    else setSelectedMonth(m => m - 1)
+  }
+  const goToNextMonth = () => {
+    if (selectedMonth === 12) { setSelectedYear(y => y + 1); setSelectedMonth(1) }
+    else setSelectedMonth(m => m + 1)
+  }
+  const isCurrentMonth = selectedYear === now.getFullYear() && selectedMonth === now.getMonth() + 1
+
+  const monthLabel = new Date(selectedYear, selectedMonth - 1, 1)
+    .toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
@@ -185,28 +211,84 @@ export default function ExpensesPage() {
         </button>
       </div>
 
+      {/* Expense Report — always visible, independent of expense list loading */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 mb-4">
+        {/* Month navigator */}
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm font-medium text-gray-900">Expense Report</p>
+          <div className="flex items-center gap-2">
+            <button onClick={goToPrevMonth}
+              className="rounded-lg border border-gray-200 p-1.5 hover:bg-gray-50 transition">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+            <p className="text-sm font-medium text-gray-700 w-32 text-center">{monthLabel}</p>
+            <button onClick={goToNextMonth} disabled={isCurrentMonth}
+              className="rounded-lg border border-gray-200 p-1.5 hover:bg-gray-50 transition disabled:opacity-30 disabled:cursor-not-allowed">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {summaryLoading ? (
+          <div className="animate-pulse h-20 rounded-xl bg-gray-100" />
+        ) : summary ? (
+          <>
+            <div className="flex items-end justify-between mb-4">
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Total Spent</p>
+                <p className="text-3xl font-bold text-gray-900">{fmt(summary.total, currency)}</p>
+              </div>
+              {summary.change_percent !== null && (
+                <div className="text-right">
+                  <p className={`text-sm font-semibold flex items-center gap-1 justify-end ${
+                    summary.change_percent > 0 ? 'text-red-600' : summary.change_percent < 0 ? 'text-green-600' : 'text-gray-400'
+                  }`}>
+                    {summary.change_percent > 0 ? '↑' : summary.change_percent < 0 ? '↓' : '→'} {Math.abs(summary.change_percent)}%
+                  </p>
+                  <p className="text-[10px] text-gray-400">vs {fmt(summary.previous_month_total, currency)} last month</p>
+                </div>
+              )}
+            </div>
+
+            {summary.by_category.length > 0 ? (
+              <div>
+                <p className="text-xs text-gray-400 mb-2">By Category</p>
+                <div className="space-y-2">
+                  {summary.by_category.map(c => {
+                    const pct = summary.total > 0 ? (parseFloat(c.total) / parseFloat(summary.total)) * 100 : 0
+                    return (
+                      <div key={c.category}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="text-gray-600">{c.category_label}</span>
+                          <span className="font-medium text-gray-800">{fmt(c.total, currency)}</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                          <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 text-center py-3">No expenses recorded for {monthLabel}.</p>
+            )}
+          </>
+        ) : null}
+      </div>
+
       {loading ? (
         <div className="animate-pulse space-y-2">
-          <div className="h-24 rounded-2xl bg-gray-100" />
           {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 rounded-2xl bg-gray-100" />)}
         </div>
       ) : (
         <div className="space-y-4">
-
-          {/* This month summary */}
-          {summary && parseFloat(summary.total) > 0 && (
-            <div className="rounded-2xl border border-gray-200 bg-white p-5">
-              <p className="text-xs text-gray-400 mb-1">This Month's Expenses</p>
-              <p className="text-2xl font-bold text-gray-900 mb-3">{fmt(summary.total, currency)}</p>
-              <div className="flex flex-wrap gap-2">
-                {summary.by_category.map(c => (
-                  <span key={c.category} className="text-xs bg-gray-50 border border-gray-100 rounded-full px-3 py-1 text-gray-600">
-                    {c.category_label}: <span className="font-medium text-gray-800">{fmt(c.total, currency)}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Expense list */}
           {expenses.length === 0 ? (
