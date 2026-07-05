@@ -389,3 +389,22 @@ class EstimateItem(models.Model):
 
     class Meta:
         ordering = ['id']
+
+
+class HealthScoreSnapshot(models.Model):
+    """
+    Saved every time the health score is calculated — lets us show a
+    trend ("+5 vs last month") by comparing against an older snapshot,
+    instead of only ever showing a single point-in-time number.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, related_name='health_snapshots')
+    total_score = models.IntegerField()
+    cash_score = models.IntegerField()
+    sales_score = models.IntegerField()
+    inventory_score = models.IntegerField()
+    operations_score = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']

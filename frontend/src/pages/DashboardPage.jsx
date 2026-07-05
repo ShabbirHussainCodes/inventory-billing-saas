@@ -79,6 +79,7 @@ export default function DashboardPage() {
   const [cashflow, setCashflow] = useState(null)
   const [healthScore, setHealthScore] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [expandedBreakdown, setExpandedBreakdown] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [closingDay, setClosingDay] = useState(false)
@@ -262,6 +263,11 @@ export default function DashboardPage() {
               <p className={`text-xs font-medium -mt-1 ${getHealthStatus(healthScore.total_score).color}`}>
                 {getHealthStatus(healthScore.total_score).emoji} {getHealthStatus(healthScore.total_score).label}
               </p>
+              {healthScore.trend && (
+                <p className={`text-xs mt-0.5 ${healthScore.trend.change > 0 ? 'text-green-600' : healthScore.trend.change < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                  {healthScore.trend.change > 0 ? '↑' : healthScore.trend.change < 0 ? '↓' : '→'} {Math.abs(healthScore.trend.change)} vs {healthScore.trend.compared_to_date}
+                </p>
+              )}
             </div>
           </div>
 
@@ -271,13 +277,22 @@ export default function DashboardPage() {
             </p>
           )}
 
-          {/* Breakdown with progress bars */}
+          {/* Breakdown with progress bars — clickable to expand sub-breakdown */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
             {Object.entries(healthScore.breakdown).map(([key, b]) => {
               const pct = b.max > 0 ? (b.score / b.max) * 100 : 0
+              const hasSubBreakdown = healthScore.sub_breakdown?.[key]?.length > 0
+              const isExpanded = expandedBreakdown === key
               return (
-                <div key={key} className="rounded-lg bg-gray-50 px-2.5 py-2">
-                  <p className="text-[10px] text-gray-400">{b.label}</p>
+                <button
+                  key={key}
+                  onClick={() => hasSubBreakdown && setExpandedBreakdown(isExpanded ? null : key)}
+                  className={`text-left rounded-lg bg-gray-50 px-2.5 py-2 ${hasSubBreakdown ? 'cursor-pointer hover:bg-gray-100 transition' : 'cursor-default'}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-gray-400">{b.label}</p>
+                    {hasSubBreakdown && <span className="text-gray-300 text-xs">{isExpanded ? '▲' : '▼'}</span>}
+                  </div>
                   <p className="text-sm font-semibold text-gray-800 mb-1">{b.score}/{b.max}</p>
                   <div className="w-full bg-gray-200 rounded-full h-1 overflow-hidden">
                     <div
@@ -285,7 +300,17 @@ export default function DashboardPage() {
                       style={{ width: `${Math.min(pct, 100)}%` }}
                     />
                   </div>
-                </div>
+                  {isExpanded && hasSubBreakdown && (
+                    <div className="mt-2 pt-2 border-t border-gray-200 space-y-1">
+                      {healthScore.sub_breakdown[key].map((sub, i) => (
+                        <div key={i} className="flex items-center justify-between">
+                          <p className="text-[10px] text-gray-500">{sub.label}</p>
+                          <p className="text-[10px] font-medium text-gray-700">{sub.score}/{sub.max}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </button>
               )
             })}
           </div>

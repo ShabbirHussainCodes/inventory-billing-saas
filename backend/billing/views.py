@@ -841,7 +841,7 @@ def business_health_score(request):
     from decimal import Decimal
     from django.utils import timezone
     from inventory.models import Product, PurchaseOrder, StockMovement
-    from .models import Estimate
+    from .models import Estimate, HealthScoreSnapshot
 
     today = timezone.now().date()
     now = timezone.now()
@@ -937,15 +937,27 @@ def business_health_score(request):
             dead_stock_count += 1
             dead_stock_names.append(p.name)
 
-    inventory_issues = low_stock_count + dead_stock_count
-    if inventory_issues == 0:
-        inventory_score = 25
-    elif inventory_issues <= 2:
-        inventory_score = 18
-    elif inventory_issues <= 5:
-        inventory_score = 10
+    # Split into two sub-scores (for the granular breakdown) — split
+    # is roughly even (12 + 13 = 25), a design choice, not a formula.
+    if low_stock_count == 0:
+        low_stock_sub = 12
+    elif low_stock_count <= 2:
+        low_stock_sub = 8
+    elif low_stock_count <= 5:
+        low_stock_sub = 4
     else:
-        inventory_score = 3
+        low_stock_sub = 1
+
+    if dead_stock_count == 0:
+        dead_stock_sub = 13
+    elif dead_stock_count <= 2:
+        dead_stock_sub = 9
+    elif dead_stock_count <= 5:
+        dead_stock_sub = 5
+    else:
+        dead_stock_sub = 1
+
+    inventory_score = low_stock_sub + dead_stock_sub
 
     if dead_stock_count > 0:
         reasons.append(f"{dead_stock_count} dead stock item(s)")
@@ -977,12 +989,16 @@ def business_health_score(request):
     delayed_pos = received_pos.filter(received_date__gt=F('expected_date')).count()
     delay_rate = round((delayed_pos / total_received) * 100, 1) if total_received > 0 else None
 
-    ops_score = 15
+    # Split into two sub-scores (7 + 8 = 15) for granular breakdown.
+    conversion_sub = 7
     if conversion_rate is not None and conversion_rate < 50:
-        ops_score -= 5
+        conversion_sub = 2
+
+    delay_sub = 8
     if delay_rate is not None and delay_rate > 30:
-        ops_score -= 5
-    ops_score = max(0, ops_score)
+        delay_sub = 3
+
+    ops_score = conversion_sub + delay_sub
 
     if delay_rate is not None and delay_rate > 30:
         reasons.append(f"{delay_rate}% of purchase orders arrived later than expected")
@@ -991,13 +1007,50 @@ def business_health_score(request):
 
     top_actions = [a['text'] for a in sorted(actions, key=lambda a: a['weight'], reverse=True)[:3]]
 
+    # Save snapshot for future trend comparisons
+    HealthScoreSnapshot.objects.create(
+        tenant=tenant,
+        total_score=total_score,
+        cash_score=cash_score,
+        sales_score=sales_score,
+        inventory_score=inventory_score,
+        operations_score=ops_score,
+    )
+
+    # Trend — compare against the closest snapshot from ~30 days ago.
+    # Honest limitation: if the business is newer than 30 days, or this
+    # is literally the first time the score has ever been calculated,
+    # there's nothing to compare against — trend will be None, not a
+    # fabricated "0% change".
+    trend = None
+    thirty_days_ago = now - timezone.timedelta(days=30)
+    older_snapshot = HealthScoreSnapshot.objects.filter(
+        tenant=tenant, created_at__lte=thirty_days_ago
+    ).order_by('-created_at').first()
+    if older_snapshot:
+        trend = {
+            'change': total_score - older_snapshot.total_score,
+            'compared_to_date': older_snapshot.created_at.date().isoformat(),
+        }
+
     return Response({
         'total_score': total_score,
+        'trend': trend,
         'breakdown': {
             'cash':        {'score': cash_score, 'max': 35, 'label': 'Cash Health'},
             'sales':       {'score': sales_score, 'max': 25, 'label': 'Sales Health'},
             'inventory':   {'score': inventory_score, 'max': 25, 'label': 'Inventory Health'},
             'operations':  {'score': ops_score, 'max': 15, 'label': 'Operations'},
+        },
+        'sub_breakdown': {
+            'inventory': [
+                {'label': 'Low Stock', 'score': low_stock_sub, 'max': 12},
+                {'label': 'Dead Stock', 'score': dead_stock_sub, 'max': 13},
+            ],
+            'operations': [
+                {'label': 'Estimate Conversion', 'score': conversion_sub, 'max': 7},
+                {'label': 'On-time Delivery', 'score': delay_sub, 'max': 8},
+            ],
         },
         'reasons': reasons,
         'recommended_actions': top_actions,
