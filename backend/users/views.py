@@ -35,6 +35,20 @@ def register_view(request):
     if serializer.is_valid():
         user = serializer.save()
         tokens = get_tokens_for_user(user)
+
+        # Founder alert — new signup. Deliberately fire-and-forget: if
+        # Telegram fails for any reason, registration must still succeed.
+        # send_telegram_message already returns (success, error) instead
+        # of raising, so no try/except needed to keep this safe.
+        from django.conf import settings
+        if settings.FOUNDER_TELEGRAM_CHAT_ID:
+            from tenants.telegram import send_telegram_message
+            tenant_name = user.tenant.name if user.tenant else 'Unknown business'
+            send_telegram_message(
+                settings.FOUNDER_TELEGRAM_CHAT_ID,
+                f"🎉 <b>New Signup</b>\n\nBusiness: {tenant_name}\nEmail: {user.email}"
+            )
+
         return Response({
             'message': 'Account created successfully.',
             'tokens': tokens,

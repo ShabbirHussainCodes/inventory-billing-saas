@@ -147,6 +147,30 @@ def invoice_list(request):
         )
         if serializer.is_valid():
             invoice = serializer.save()
+
+            # Suspicious activity alert — bulk invoice creation in a short
+            # window. Threshold (20/hour) is a design choice, not a proven
+            # fraud-detection number — a genuine busy shop could hit this
+            # too. Alert fires only ONCE per burst (when count first
+            # crosses the threshold), not on every invoice after, to
+            # avoid spamming the founder repeatedly for the same event.
+            from django.conf import settings
+            if settings.FOUNDER_TELEGRAM_CHAT_ID:
+                from django.utils import timezone
+                from tenants.telegram import send_telegram_message
+                SUSPICIOUS_THRESHOLD = 20
+                one_hour_ago = timezone.now() - timezone.timedelta(hours=1)
+                recent_count = Invoice.objects.filter(
+                    tenant=tenant, created_at__gte=one_hour_ago
+                ).count()
+                if recent_count == SUSPICIOUS_THRESHOLD:
+                    send_telegram_message(
+                        settings.FOUNDER_TELEGRAM_CHAT_ID,
+                        f"⚠️ <b>Suspicious Activity</b>\n\n"
+                        f"{tenant.name} created {recent_count} invoices "
+                        f"in the last hour."
+                    )
+
             return Response(
                 InvoiceSerializer(invoice).data,
                 status=status.HTTP_201_CREATED

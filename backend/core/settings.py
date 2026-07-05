@@ -14,6 +14,11 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 # yahan hardcode nahi karna (public repo mein leak ho sakta hai).
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 
+# Founder's own Chat ID — for PLATFORM-level alerts (new signups, suspicious
+# activity), separate from tenant.telegram_chat_id (which is per-business,
+# for their own daily reports). Same bot, different recipient.
+FOUNDER_TELEGRAM_CHAT_ID = os.getenv('FOUNDER_TELEGRAM_CHAT_ID', '')
+
 # Cloudflare Turnstile — bot protection on registration.
 # Secret key Render env var mein set karo, yahan hardcode nahi.
 TURNSTILE_SECRET_KEY = os.getenv('TURNSTILE_SECRET_KEY', '')
