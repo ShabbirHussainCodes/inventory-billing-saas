@@ -151,6 +151,7 @@ export const billingAPI = {
   deleteEstimate: (id) => api.delete(`/billing/estimates/${id}/`),
   updateEstimateStatus: (id, status) => api.patch(`/billing/estimates/${id}/status/`, { status }),
   convertEstimateToInvoice: (id) => api.post(`/billing/estimates/${id}/convert/`),
+  getProfitIntelligence: () => api.get('/billing/profit-intelligence/'),
   addCustomer: (data) => api.post('/billing/customers/', data),
   updateCustomer: (id, data) => api.put(`/billing/customers/${id}/`, data),
   deleteCustomer: (id) => api.delete(`/billing/customers/${id}/`),

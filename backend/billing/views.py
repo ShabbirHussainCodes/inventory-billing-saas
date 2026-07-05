@@ -709,3 +709,112 @@ def convert_to_invoice(request, pk):
     # Agar stock insufficient hai ya koi aur validation fail ho, estimate
     # ka status wahi rehta hai — user ko pata chal jaayega kya galat hai
     return Response(invoice_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def profit_intelligence(request):
+    """
+    Profit Intelligence — pure aggregation on already-tracked InvoiceItem
+    data (product, quantity, profit). No new fields, no subjective scoring
+    — just "which products actually make you money."
+
+    Only 'sent'/'paid' invoices count — draft isn't a real sale yet,
+    cancelled is voided. Same filtering principle used in Business Brief.
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    from django.db.models import Sum
+    from django.db.models.functions import Coalesce
+    from decimal import Decimal
+    from django.utils import timezone
+    from .models import InvoiceItem
+
+    items_qs = InvoiceItem.objects.filter(
+        invoice__tenant=tenant,
+        invoice__status__in=['sent', 'paid'],
+    )
+
+    by_product = items_qs.values('product_id', 'product_name').annotate(
+        total_profit=Coalesce(Sum('profit'), Decimal('0.00')),
+        total_revenue=Coalesce(Sum('total'), Decimal('0.00')),
+        total_quantity=Coalesce(Sum('quantity'), 0),
+    )
+
+    top_products = list(by_product.order_by('-total_profit')[:5])
+
+    # Loss-making products only — not just "the bottom 5 regardless of
+    # sign", which would be misleading for a small business with few
+    # products (could show profitable items as if they were a problem).
+    bottom_products = list(by_product.filter(total_profit__lt=0).order_by('total_profit')[:5])
+
+    by_category = items_qs.filter(product__category__isnull=False).values(
+        'product__category__name'
+    ).annotate(
+        total_profit=Coalesce(Sum('profit'), Decimal('0.00')),
+        total_revenue=Coalesce(Sum('total'), Decimal('0.00')),
+    ).order_by('-total_profit')
+
+    # Month-over-month margin trend
+    now = timezone.now()
+    this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).date()
+    if this_month_start.month == 1:
+        last_month_start = this_month_start.replace(year=this_month_start.year - 1, month=12)
+    else:
+        last_month_start = this_month_start.replace(month=this_month_start.month - 1)
+    last_month_end = this_month_start - timezone.timedelta(days=1)
+
+    this_month_agg = items_qs.filter(invoice__invoice_date__gte=this_month_start).aggregate(
+        profit=Coalesce(Sum('profit'), Decimal('0.00')),
+        revenue=Coalesce(Sum('total'), Decimal('0.00')),
+    )
+    last_month_agg = items_qs.filter(
+        invoice__invoice_date__gte=last_month_start,
+        invoice__invoice_date__lte=last_month_end,
+    ).aggregate(
+        profit=Coalesce(Sum('profit'), Decimal('0.00')),
+        revenue=Coalesce(Sum('total'), Decimal('0.00')),
+    )
+
+    def margin(revenue, profit):
+        # Honest: with zero revenue, margin is undefined, NOT 0%.
+        # Returning None lets the frontend show "—" instead of a
+        # misleading "0%".
+        if revenue and revenue > 0:
+            return round((profit / revenue) * 100, 2)
+        return None
+
+    return Response({
+        'currency': tenant.currency,
+        'top_products': [{
+            'product_id': str(p['product_id']) if p['product_id'] else None,
+            'product_name': p['product_name'],
+            'total_profit': p['total_profit'],
+            'total_revenue': p['total_revenue'],
+            'total_quantity': p['total_quantity'],
+        } for p in top_products],
+        'bottom_products': [{
+            'product_id': str(p['product_id']) if p['product_id'] else None,
+            'product_name': p['product_name'],
+            'total_profit': p['total_profit'],
+            'total_revenue': p['total_revenue'],
+            'total_quantity': p['total_quantity'],
+        } for p in bottom_products],
+        'by_category': [{
+            'category_name': c['product__category__name'],
+            'total_profit': c['total_profit'],
+            'total_revenue': c['total_revenue'],
+        } for c in by_category],
+        'this_month': {
+            'profit': this_month_agg['profit'],
+            'revenue': this_month_agg['revenue'],
+            'margin_percent': margin(this_month_agg['revenue'], this_month_agg['profit']),
+        },
+        'last_month': {
+            'profit': last_month_agg['profit'],
+            'revenue': last_month_agg['revenue'],
+            'margin_percent': margin(last_month_agg['revenue'], last_month_agg['profit']),
+        },
+    })

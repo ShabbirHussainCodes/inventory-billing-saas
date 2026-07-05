@@ -23,4 +23,7 @@ urlpatterns = [
     path('estimates/<uuid:pk>/', views.estimate_detail, name='estimate-detail'),
     path('estimates/<uuid:pk>/status/', views.estimate_update_status, name='estimate-status'),
     path('estimates/<uuid:pk>/convert/', views.convert_to_invoice, name='estimate-convert'),
+
+    # Profit Intelligence
+    path('profit-intelligence/', views.profit_intelligence, name='profit-intelligence'),
 ]
