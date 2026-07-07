@@ -1238,6 +1238,7 @@ def generate_demand_forecasts(request):
     from inventory.models import Product
     from .forecasting import classify_and_forecast
     from .models import DemandForecast
+    from tenants.telegram import send_telegram_message
 
     products = Product.objects.filter(tenant=tenant, is_active=True)
     results = []
@@ -1255,9 +1256,36 @@ def generate_demand_forecasts(request):
         )
         results.append(obj)
 
+    # Build Telegram message — same delivery pattern as Business Brief
+    # (Owner's own Chat ID, not Founder's — that's a separate future item).
+    forecastable = [r for r in results if r.forecast_daily_rate is not None]
+    insufficient_count = len(results) - len(forecastable)
+
+    if not forecastable:
+        message = (
+            f"<b>📈 Demand Forecast — {tenant.name}</b>\n\n"
+            f"Not enough sales history yet across your products to forecast "
+            f"demand. This will improve as more sales get recorded."
+        )
+    else:
+        lines = [f"<b>📈 Demand Forecast — {tenant.name}</b>\n"]
+        for r in forecastable[:10]:  # cap message length, avoid a huge wall of text
+            icon = '🟢' if r.pattern_type == 'dense' else '🟡'
+            lines.append(f"{icon} {r.product.name} — {float(r.forecast_daily_rate):.2f} units/day (predicted)")
+        if insufficient_count > 0:
+            lines.append(f"\nℹ️ {insufficient_count} product(s) still have insufficient data.")
+        message = "\n".join(lines)
+
+    telegram_sent = False
+    telegram_error = None
+    if tenant.telegram_chat_id:
+        telegram_sent, telegram_error = send_telegram_message(tenant.telegram_chat_id, message)
+
     return Response({
         'message': f'Forecasts generated for {len(results)} product(s).',
         'count': len(results),
+        'telegram_sent': telegram_sent,
+        'telegram_error': telegram_error,
     })
 
 

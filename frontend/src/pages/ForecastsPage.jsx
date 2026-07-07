@@ -33,7 +33,10 @@ export default function ForecastsPage() {
     setGenerating(true)
     try {
       const res = await billingAPI.generateForecasts()
-      setToast(res.data.message)
+      const telegramNote = res.data.telegram_sent
+        ? ' + sent to Telegram ✓'
+        : (res.data.telegram_error ? ' (Telegram not sent — check Settings)' : '')
+      setToast(res.data.message + telegramNote)
       fetchForecasts()
     } catch (err) {
       setToast(err?.response?.data?.error || 'Could not generate forecasts.')
