@@ -32,4 +32,8 @@ urlpatterns = [
     path('expenses/', views.expense_list, name='expense-list'),
     path('expenses/<uuid:pk>/', views.expense_detail, name='expense-detail'),
     path('expenses/summary/', views.expense_summary, name='expense-summary'),
+
+    # Demand Forecasting
+    path('forecasts/generate/', views.generate_demand_forecasts, name='generate-forecasts'),
+    path('forecasts/', views.get_demand_forecasts, name='get-forecasts'),
 ]

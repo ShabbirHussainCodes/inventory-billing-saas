@@ -157,6 +157,8 @@ export const billingAPI = {
   addExpense: (data) => api.post('/billing/expenses/', data),
   deleteExpense: (id) => api.delete(`/billing/expenses/${id}/`),
   getExpenseSummary: (year, month) => api.get(`/billing/expenses/summary/?year=${year}&month=${month}`),
+  generateForecasts: () => api.post('/billing/forecasts/generate/'),
+  getForecasts: () => api.get('/billing/forecasts/'),
   addCustomer: (data) => api.post('/billing/customers/', data),
   updateCustomer: (id, data) => api.put(`/billing/customers/${id}/`, data),
   deleteCustomer: (id) => api.delete(`/billing/customers/${id}/`),

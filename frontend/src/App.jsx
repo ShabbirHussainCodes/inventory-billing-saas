@@ -9,6 +9,7 @@ import InvoicesPage from "./pages/InvoicesPage"
 import EstimatesPage from "./pages/EstimatesPage"
 import ProfitIntelligencePage from "./pages/ProfitIntelligencePage"
 import ExpensesPage from "./pages/ExpensesPage"
+import ForecastsPage from "./pages/ForecastsPage"
 import CustomersPage from "./pages/CustomersPage"
 import CreateInvoicePage from "./pages/CreateInvoicePage"
 import EditInvoicePage from "./pages/EditInvoicePage"
@@ -54,6 +55,7 @@ function App() {
         <Route path="/estimates" element={<ProtectedRoute><EstimatesPage /></ProtectedRoute>} />
         <Route path="/profit-intelligence" element={<ProtectedRoute><ProfitIntelligencePage /></ProtectedRoute>} />
         <Route path="/expenses" element={<ProtectedRoute><ExpensesPage /></ProtectedRoute>} />
+        <Route path="/forecasts" element={<ProtectedRoute><ForecastsPage /></ProtectedRoute>} />
         <Route path="/invoices/create" element={<ProtectedRoute><CreateInvoicePage /></ProtectedRoute>} />
         <Route path="/invoices/edit/:id" element={<ProtectedRoute><EditInvoicePage /></ProtectedRoute>} />
         <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />

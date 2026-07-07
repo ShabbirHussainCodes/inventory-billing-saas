@@ -1219,3 +1219,68 @@ def expense_summary(request):
         } for c in by_category],
         'currency': tenant.currency,
     })
+
+
+# ─── DEMAND FORECASTING VIEWS ─────────────────────────────────
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_demand_forecasts(request):
+    """
+    Manual trigger — jaisa 'Generate Business Brief' hai. Har active
+    product ke liye forecast (re)calculate karta hai. Purana forecast
+    overwrite hota hai (history table nahi hai v1 mein).
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    from inventory.models import Product
+    from .forecasting import classify_and_forecast
+    from .models import DemandForecast
+
+    products = Product.objects.filter(tenant=tenant, is_active=True)
+    results = []
+
+    for product in products:
+        forecast_data = classify_and_forecast(tenant, product)
+        obj, _ = DemandForecast.objects.update_or_create(
+            tenant=tenant, product=product,
+            defaults={
+                'pattern_type': forecast_data['pattern_type'],
+                'forecast_daily_rate': forecast_data['forecast_daily_rate'],
+                'data_points_used': forecast_data['data_points_used'],
+                'note': forecast_data['note'],
+            }
+        )
+        results.append(obj)
+
+    return Response({
+        'message': f'Forecasts generated for {len(results)} product(s).',
+        'count': len(results),
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_demand_forecasts(request):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    from .models import DemandForecast
+
+    forecasts = DemandForecast.objects.filter(tenant=tenant).select_related('product')
+
+    data = [{
+        'id': str(f.id),
+        'product_id': str(f.product.id),
+        'product_name': f.product.name,
+        'pattern_type': f.pattern_type,
+        'forecast_daily_rate': f.forecast_daily_rate,
+        'data_points_used': f.data_points_used,
+        'note': f.note,
+        'generated_at': f.generated_at.isoformat(),
+    } for f in forecasts]
+
+    return Response({'results': data, 'count': len(data)})

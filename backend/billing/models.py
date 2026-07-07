@@ -454,3 +454,56 @@ class Expense(models.Model):
 
     def __str__(self):
         return f"{self.title} — ₹{self.amount}"
+
+
+class DemandForecast(models.Model):
+    """
+    Product-wise demand forecast — pattern-classified (dense vs
+    intermittent) before choosing a method. This is deliberately
+    simple v1: manual trigger, no scheduling (Celery not available
+    on current infra), no external forecasting library dependency
+    (Croston's method implemented directly from its published
+    formula, not via a third-party package whose current API
+    wasn't independently verified).
+
+    PATTERN_CHOICES explanation:
+    - 'dense': product sells on most observed days — simple moving
+      average is used.
+    - 'intermittent': product sells only occasionally — Croston's
+      method is used (designed specifically for sparse/irregular
+      demand, where a plain moving average would be misleading).
+    - 'insufficient_data': not enough sales history yet to forecast
+      honestly — no number is fabricated in this case.
+    """
+    PATTERN_CHOICES = [
+        ('dense',              'Dense (regular sales)'),
+        ('intermittent',       'Intermittent (sparse sales)'),
+        ('insufficient_data',  'Insufficient Data'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, related_name='demand_forecasts')
+    product = models.ForeignKey('inventory.Product', on_delete=models.CASCADE, related_name='demand_forecasts')
+
+    pattern_type = models.CharField(max_length=20, choices=PATTERN_CHOICES)
+    forecast_daily_rate = models.DecimalField(
+        max_digits=10, decimal_places=4, null=True, blank=True
+    )  # predicted units/day — null if insufficient_data
+    data_points_used = models.IntegerField(default=0)  # kitne din ka data use hua
+    note = models.TextField(blank=True)  # human-readable explanation
+
+    generated_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-generated_at']
+        # Har product ka sirf ek LATEST forecast rakhna hai —
+        # purane ko overwrite karenge, history table nahi hai v1 mein
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'product'],
+                name='unique_forecast_per_product'
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.product.name} — {self.pattern_type}"
