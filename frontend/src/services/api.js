@@ -102,6 +102,9 @@ api.interceptors.response.use(
 
 export const authAPI = {
   login: (data) => api.post('/auth/login/', data),
+  // Multi-tenant staff login step 2 — jab login() ne temporary_token +
+  // businesses list return ki thi (matlab user ki 2+ active businesses hain)
+  selectBusiness: (data) => api.post('/auth/login/select-business/', data),
   register: (data) => api.post('/auth/register/', data),
   logout: (data) => api.post('/auth/logout/', data),
   profile: () => api.get('/auth/profile/'),
