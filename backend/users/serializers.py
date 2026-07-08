@@ -75,6 +75,21 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
 
+        # Membership record bhi banao — yeh ab source of truth hai
+        # (CustomUser.tenant/role upar wale legacy fields hain, backward
+        # compat ke liye rakhe gaye hain, hataye nahi gaye)
+        from django.utils import timezone
+        from teams.models import Role, Membership
+        owner_role = Role.objects.get(name='Owner', tenant=None)
+        Membership.objects.create(
+            user=user,
+            tenant=tenant,
+            role=owner_role,
+            status='active',
+            invite_email=user.email,
+            joined_at=timezone.now(),
+        )
+
         return user
 
 

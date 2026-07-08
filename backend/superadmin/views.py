@@ -94,10 +94,12 @@ def tenant_list(request):
     from django.db.models.functions import Coalesce
     from billing.models import Invoice
 
-    # Owner email — pehle business_owner ka email (Subquery)
-    owner_email_subq = CustomUser.objects.filter(
-        tenant=OuterRef('pk'), role='business_owner'
-    ).values('email')[:1]
+    # Owner email — Membership se (role='business_owner' hardcode ab
+    # deprecated hai, Membership table hi source of truth hai) (Subquery)
+    from teams.models import Membership
+    owner_email_subq = Membership.objects.filter(
+        tenant=OuterRef('pk'), role__name='Owner', status='active'
+    ).values('user__email')[:1]
 
     # Single annotated query — N+1 nahi
     tenants = Tenant.objects.annotate(
@@ -967,12 +969,16 @@ def permanent_delete_tenant(request, tenant_id):
     from inventory.models import Product
     from billing.models import Customer, Invoice
     from users.models import CustomUser
+    from teams.models import Membership
     from .models import TenantDeletionLog
 
     # owner_email Tenant model ka real field nahi hai — tenant_list view mein
-    # yeh sirf Subquery annotation hai. Yahan directly CustomUser se nikalo.
-    owner = CustomUser.objects.filter(tenant=tenant, role='business_owner').first()
-    owner_email = owner.email if owner else ''
+    # yeh sirf Subquery annotation hai. Yahan Membership se nikalo
+    # (role='business_owner' hardcode ab deprecated hai).
+    owner_membership = Membership.objects.filter(
+        tenant=tenant, role__name='Owner', status='active'
+    ).select_related('user').first()
+    owner_email = owner_membership.user.email if owner_membership else ''
 
     # Delete se PEHLE snapshot lo — counts, naam, email — sab save karo
     snapshot = TenantDeletionLog.objects.create(

@@ -201,6 +201,24 @@ class Membership(models.Model):
         who = self.user.email if self.user else self.invite_email
         return f"{who} @ {self.tenant.name} ({self.role.name}, {self.status})"
 
+    def save(self, *args, **kwargs):
+        # Hard safety guard — Founder (super_admin) ko KABHI Membership row
+        # nahi milni chahiye. Yeh Django-level CheckConstraint se enforce
+        # nahi ho sakta (cross-table condition — Membership.user.role,
+        # Postgres CHECK constraints sirf same-table columns pe kaam karte
+        # hain), isliye yeh application-level guard hai jo har .save() pe
+        # (admin panel se, shell se, kisi bhi future invite-accept code se)
+        # chalta hai — DB-level raw constraint nahi hai.
+        if self.user_id:
+            user = self.user   # FK access — agar cache mein nahi hai toh 1 query
+            if getattr(user, 'role', None) == 'super_admin':
+                raise ValueError(
+                    "Membership row cannot be created/saved for a super_admin "
+                    "(Founder) user. Founder access must stay separate via "
+                    "SupportSession — not via Role/Membership."
+                )
+        super().save(*args, **kwargs)
+
 
 class ActivityLog(models.Model):
     """
