@@ -131,9 +131,13 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     # /login/select-business/ ke liye rate limit (Team Management,
-    # multi-tenant login flow) — teams/throttles.py mein SelectBusinessThrottle
+    # multi-tenant login flow) — teams/throttles.py mein SelectBusinessThrottle.
+    # accept_invite — /team/invite/<token>/accept/ ke liye, jab existing
+    # account ka password verify hota hai (login jaisa hi brute-force
+    # surface) — teams/throttles.py mein AcceptInviteThrottle.
     'DEFAULT_THROTTLE_RATES': {
         'select_business': '5/min',
+        'accept_invite': '5/min',
     },
 }
 # Production Settings

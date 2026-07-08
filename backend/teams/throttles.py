@@ -16,3 +16,13 @@ class SelectBusinessThrottle(AnonRateThrottle):
     count rakhega (weaker guarantee us case mein).
     """
     scope = 'select_business'
+
+
+class AcceptInviteThrottle(AnonRateThrottle):
+    """
+    /team/invite/<token>/accept/ — jab invited email ka pehle se account
+    exist karta hai, yeh endpoint password verify (authenticate()) karta
+    hai. Yeh effectively ek dusra password-guessing surface hai, login
+    jaisa hi — isliye same rate-limit discipline.
+    """
+    scope = 'accept_invite'

@@ -19,4 +19,7 @@ urlpatterns = [
 
     # Tenant Settings (business contact info)
     path('api/tenant/', include('tenants.urls')),
+
+    # Team Management (RBAC — invite/accept, member management, activity log)
+    path('api/team/', include('teams.urls')),
 ]
