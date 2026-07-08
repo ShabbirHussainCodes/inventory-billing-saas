@@ -20,9 +20,20 @@ from superadmin.utils import get_active_tenant, is_edit_mode
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def category_list(request):
+    # category.manage — single bundled permission covers read + write.
+    # No separate category.view exists in the catalog (0002): Categories
+    # are only ever fetched by ProductsPage/CategoriesSuppliersPage, both
+    # already gated to Owner/Manager via product.create/edit access —
+    # Sales Staff/Accountant/Viewer never call this endpoint in the
+    # frontend, and ProductSerializer already embeds category_name inline
+    # on every product they CAN see. Verified against frontend before
+    # wiring, not guessed.
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'category.manage'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'GET':
         categories = Category.objects.filter(
@@ -49,9 +60,12 @@ def category_list(request):
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def category_detail(request, pk):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'category.manage'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
         category = Category.objects.get(pk=pk, tenant=tenant)
@@ -86,9 +100,15 @@ def category_detail(request, pk):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def supplier_list(request):
+    # supplier.manage — same bundled-permission rationale as category.manage
+    # above (only called from ProductsPage/PurchaseOrdersPage, both already
+    # Owner/Manager-gated flows; verified against frontend).
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'supplier.manage'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'GET':
         suppliers = Supplier.objects.filter(
@@ -115,9 +135,12 @@ def supplier_list(request):
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def supplier_detail(request, pk):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'supplier.manage'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
         supplier = Supplier.objects.get(pk=pk, tenant=tenant)
@@ -153,11 +176,14 @@ def supplier_detail(request, pk):
 def product_list(request):
     # Sirf us tenant ke products dikhenge
     # Multi-tenant isolation yahan hoti hai
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
 
     if request.method == 'GET':
+        if not has_permission(request, 'product.view'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         from django.db.models import Sum, Q
         from django.db.models.functions import Coalesce
 
@@ -180,6 +206,8 @@ def product_list(request):
         return Response(serializer.data)
 
     elif request.method == 'POST':
+        if not has_permission(request, 'product.create'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         # Feature gating — Free plan mein sirf 20 products
         from tenants.plan_limits import is_within_limit
         current_count = Product.objects.filter(tenant=tenant, is_active=True).count()
@@ -230,6 +258,7 @@ def product_list(request):
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def product_detail(request, pk):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
@@ -243,10 +272,14 @@ def product_detail(request, pk):
         )
 
     if request.method == 'GET':
+        if not has_permission(request, 'product.view'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = ProductSerializer(product)
         return Response(serializer.data)
 
     elif request.method == 'PUT':
+        if not has_permission(request, 'product.edit'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         # SKU duplicate check — agar SKU badla ho to verify karo koi aur
         # product (isi tenant mein) wahi SKU use na kar raha ho
         new_sku = (request.data.get('sku') or '').strip()
@@ -280,6 +313,8 @@ def product_detail(request, pk):
         )
 
     elif request.method == 'DELETE':
+        if not has_permission(request, 'product.delete'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         product.is_active = False
         product.save()
         from superadmin.audit import log_action
@@ -296,9 +331,12 @@ def product_detail(request, pk):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def low_stock_products(request):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'product.view'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
     from django.db.models import F
     # DB-level filter — Python loop nahi, F() se DB pe compare
     low_stock = Product.objects.filter(
@@ -318,9 +356,12 @@ def low_stock_products(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def add_stock_movement(request):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'stock.manage'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     serializer = StockMovementSerializer(data=request.data)
     if serializer.is_valid():
@@ -374,9 +415,12 @@ def stock_movement_list(request):
     Stock movement history — filters ke saath.
     Query params: product_id, movement_type, days, page, page_size
     """
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'stock.view_history'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     movements = StockMovement.objects.filter(tenant=tenant).select_related('product', 'user')
 
@@ -434,16 +478,21 @@ def stock_movement_list(request):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def purchase_order_list(request):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
 
     if request.method == 'GET':
+        if not has_permission(request, 'purchase_order.view'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         orders = PurchaseOrder.objects.filter(tenant=tenant).prefetch_related('items')
         serializer = PurchaseOrderSerializer(orders, many=True)
         return Response(serializer.data)
 
     elif request.method == 'POST':
+        if not has_permission(request, 'purchase_order.create'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = PurchaseOrderSerializer(data=request.data, context={'tenant': tenant})
         if serializer.is_valid():
             po = serializer.save()
@@ -461,6 +510,7 @@ def purchase_order_list(request):
 @api_view(['GET', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def purchase_order_detail(request, pk):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
@@ -471,9 +521,13 @@ def purchase_order_detail(request, pk):
         return Response({'error': 'Purchase order not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == 'GET':
+        if not has_permission(request, 'purchase_order.view'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         return Response(PurchaseOrderSerializer(po).data)
 
     elif request.method == 'DELETE':
+        if not has_permission(request, 'purchase_order.delete'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         # Sirf draft orders delete ho sakte hain — ordered/received orders
         # ka data/audit trail preserve karna zaroori hai
         if po.status != 'draft':
@@ -497,9 +551,12 @@ def purchase_order_update_status(request, pk):
     field) is ready for it, but the UI/logic for partial amounts would
     need to be added later as a separate change.
     """
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'purchase_order.change_status'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
         po = PurchaseOrder.objects.get(pk=pk, tenant=tenant)
@@ -601,9 +658,12 @@ def freight_summary(request):
     owner can see "how much did shipping cost me this month" at a glance.
     Defaults to the current month if no year/month query params given.
     """
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'purchase_order.view'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     from django.db.models import Sum, Count
     from django.db.models.functions import Coalesce
