@@ -18,11 +18,14 @@ from superadmin.utils import get_active_tenant, is_edit_mode
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def customer_list(request):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
 
     if request.method == 'GET':
+        if not has_permission(request, 'customer.view'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         customers = Customer.objects.filter(
             tenant=tenant,
             is_active=True
@@ -31,6 +34,8 @@ def customer_list(request):
         return Response(serializer.data)
 
     elif request.method == 'POST':
+        if not has_permission(request, 'customer.create'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         # Feature gating — Free plan mein sirf 25 customers
         from tenants.plan_limits import is_within_limit
         current_count = Customer.objects.filter(tenant=tenant, is_active=True).count()
@@ -62,6 +67,7 @@ def customer_list(request):
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def customer_detail(request, pk):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
@@ -75,10 +81,30 @@ def customer_detail(request, pk):
         )
 
     if request.method == 'GET':
+        if not has_permission(request, 'customer.view'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = CustomerSerializer(customer)
         return Response(serializer.data)
 
     elif request.method == 'PUT':
+        # customer.edit = full access (Owner/Manager). customer.edit_basic =
+        # sirf Basic Info (name/email/phone/address) — Sales Staff. Koi bhi
+        # "Business Info" field (tax_number/country) bhejne pe reject hota
+        # hai agar sirf edit_basic hai — silently strip nahi kiya, taaki
+        # frontend/user ko pata chale ki kya reject hua.
+        full_access = has_permission(request, 'customer.edit')
+        basic_access = has_permission(request, 'customer.edit_basic')
+
+        if not full_access and not basic_access:
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if basic_access and not full_access:
+            restricted_fields = [f for f in ('tax_number', 'country') if f in request.data]
+            if restricted_fields:
+                return Response({
+                    'error': f"You don't have permission to edit: {', '.join(restricted_fields)}."
+                }, status=status.HTTP_403_FORBIDDEN)
+
         serializer = CustomerSerializer(
             customer,
             data=request.data,
@@ -96,6 +122,8 @@ def customer_detail(request, pk):
         )
 
     elif request.method == 'DELETE':
+        if not has_permission(request, 'customer.delete'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         customer.is_active = False
         customer.save()
         from superadmin.audit import log_action
@@ -112,16 +140,21 @@ def customer_detail(request, pk):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def invoice_list(request):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
 
     if request.method == 'GET':
+        if not has_permission(request, 'invoice.view'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         invoices = Invoice.objects.filter(tenant=tenant)
         serializer = InvoiceSerializer(invoices, many=True)
         return Response(serializer.data)
 
     elif request.method == 'POST':
+        if not has_permission(request, 'invoice.create'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         # Feature gating — Free plan mein sirf 10 invoices/month
         from tenants.plan_limits import is_within_limit
         from django.utils import timezone
@@ -184,6 +217,7 @@ def invoice_list(request):
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def invoice_detail(request, pk):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
@@ -197,10 +231,14 @@ def invoice_detail(request, pk):
         )
 
     if request.method == 'GET':
+        if not has_permission(request, 'invoice.view'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = InvoiceSerializer(invoice)
         return Response(serializer.data)
 
     elif request.method == 'DELETE':
+        if not has_permission(request, 'invoice.delete'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         # Sirf draft invoices delete ho sakte hain — sent/paid pe history
         # preserve karni hai (accounting integrity)
         if invoice.status != 'draft':
@@ -231,6 +269,8 @@ def invoice_detail(request, pk):
         return Response({'message': 'Draft invoice deleted.'}, status=status.HTTP_200_OK)
 
     elif request.method == 'PUT':
+        if not has_permission(request, 'invoice.edit'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         # Sirf draft invoices edit ho sakte hain — business rule
         if invoice.status != 'draft':
             return Response(
@@ -260,9 +300,12 @@ def invoice_detail(request, pk):
 @permission_classes([IsAuthenticated])
 def invoice_update_status(request, pk):
     """Invoice ka status update karo — sirf status field"""
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'invoice.change_status'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
         invoice = Invoice.objects.get(pk=pk, tenant=tenant)
@@ -287,9 +330,12 @@ def invoice_update_status(request, pk):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def invoice_summary(request):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'invoice.view'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
     from django.db.models import Sum, Count, Q
     from django.db.models.functions import Coalesce
     from decimal import Decimal
@@ -318,9 +364,12 @@ def close_day(request):
     Aaj ka collection + profit calculate karo aur Telegram pe bhejo.
     Manual trigger — "Close Day" button se call hota hai.
     """
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'billing.close_day'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     if not tenant.telegram_chat_id:
         return Response({
@@ -386,9 +435,12 @@ def cashflow_summary(request):
     hoga jab se Mark as Paid feature hai, par abhi meaningful
     pattern banne mein time lagega.
     """
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'billing.view_cashflow'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     from django.db.models import Sum, Count
     from django.db.models.functions import Coalesce
@@ -448,9 +500,12 @@ def generate_business_brief(request):
     reasonable starting defaults, NOT proven-optimal numbers. They
     should become tenant-configurable later; hardcoded here for v1.
     """
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'billing.view_business_brief'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     from django.db.models import Max, F
     from django.utils import timezone
@@ -569,9 +624,12 @@ def update_suggestion_status(request, suggestion_id):
     Mark a suggestion as 'acted' or 'dismissed' — this status history is
     the raw data future Business Memory pattern-learning will use.
     """
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'billing.view_business_brief'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     from django.utils import timezone
     from .models import BusinessSuggestion
@@ -597,16 +655,21 @@ def update_suggestion_status(request, suggestion_id):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def estimate_list(request):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
 
     if request.method == 'GET':
+        if not has_permission(request, 'estimate.view'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         estimates = Estimate.objects.filter(tenant=tenant).select_related('customer')
         serializer = EstimateSerializer(estimates, many=True)
         return Response(serializer.data)
 
     elif request.method == 'POST':
+        if not has_permission(request, 'estimate.create'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         # NOTE: Estimates deliberately do NOT count against the plan's
         # monthly invoice limit — a quote isn't a sale yet.
         serializer = EstimateSerializer(
@@ -625,6 +688,7 @@ def estimate_list(request):
 @api_view(['GET', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def estimate_detail(request, pk):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
@@ -635,9 +699,13 @@ def estimate_detail(request, pk):
         return Response({'error': 'Estimate not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == 'GET':
+        if not has_permission(request, 'estimate.view'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         return Response(EstimateSerializer(estimate).data)
 
     elif request.method == 'DELETE':
+        if not has_permission(request, 'estimate.delete'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         if estimate.status != 'draft':
             return Response({
                 'error': 'Only draft estimates can be deleted.'
@@ -653,9 +721,12 @@ def estimate_update_status(request, pk):
     Status transitions: draft → sent → accepted / rejected.
     'converted' is set only by convert_to_invoice, not here directly.
     """
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'estimate.change_status'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
         estimate = Estimate.objects.get(pk=pk, tenant=tenant)
@@ -689,9 +760,12 @@ def convert_to_invoice(request, pk):
     happen through the exact same path as a normal invoice, so there's
     no duplicated/divergent logic to maintain.
     """
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'estimate.convert'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
         estimate = Estimate.objects.get(pk=pk, tenant=tenant)
@@ -747,9 +821,12 @@ def profit_intelligence(request):
     Only 'sent'/'paid' invoices count — draft isn't a real sale yet,
     cancelled is voided. Same filtering principle used in Business Brief.
     """
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'profit_intelligence.view'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     from django.db.models import Sum
     from django.db.models.functions import Coalesce
@@ -857,9 +934,12 @@ def business_health_score(request):
 
     Weights: Cash 35 / Sales 25 / Inventory 25 / Operations 15 (out of 100)
     """
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'health_score.view'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     from django.db.models import Sum, Count, Max, F
     from django.db.models.functions import Coalesce
@@ -1122,15 +1202,20 @@ def business_health_score(request):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def expense_list(request):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
 
     if request.method == 'GET':
+        if not has_permission(request, 'expense.view'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         expenses = Expense.objects.filter(tenant=tenant)
         return Response(ExpenseSerializer(expenses, many=True).data)
 
     elif request.method == 'POST':
+        if not has_permission(request, 'expense.create'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = ExpenseSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save(tenant=tenant, created_by=request.user)
@@ -1141,9 +1226,12 @@ def expense_list(request):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def expense_detail(request, pk):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'expense.delete'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
         expense = Expense.objects.get(pk=pk, tenant=tenant)
@@ -1161,9 +1249,12 @@ def expense_summary(request):
     Monthly total + category-wise breakdown. Defaults to current month;
     accepts ?year=&month= query params for other months.
     """
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'expense.view'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     from django.db.models import Sum
     from django.db.models.functions import Coalesce
@@ -1231,9 +1322,12 @@ def generate_demand_forecasts(request):
     product ke liye forecast (re)calculate karta hai. Purana forecast
     overwrite hota hai (history table nahi hai v1 mein).
     """
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'forecast.generate'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     from inventory.models import Product
     from .forecasting import classify_and_forecast
@@ -1292,9 +1386,12 @@ def generate_demand_forecasts(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_demand_forecasts(request):
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'forecast.view'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     from .models import DemandForecast
 
