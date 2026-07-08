@@ -11,17 +11,29 @@ def business_settings(request):
     """
     Business owner apne business contact details dekh/edit kar sakta hai.
     Yeh details invoice header pe dikhte hain (company name, GST, phone, etc).
+
+    NOTE: Phase B se pehle yeh view koi permission check nahi karta tha —
+    koi bhi active Membership wala staff (chahe koi bhi role ho) ise
+    dekh/edit kar sakta tha. Ab team.manage_settings/view_settings se
+    gated hai. Founder (super_admin) is check se hamesha bypass hota hai
+    — has_permission() ka apna logic already Founder ko is_edit_mode()
+    se decide karta hai, role/permission catalog unhe apply nahi hota.
     """
     from superadmin.utils import get_active_tenant
+    from teams.permissions import has_permission
     tenant = get_active_tenant(request)
     if not tenant:
         return Response({'error': 'No active business context.'}, status=400)
 
     if request.method == 'GET':
+        if not has_permission(request, 'tenant.view_settings'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = TenantSettingsSerializer(tenant)
         return Response(serializer.data)
 
     elif request.method == 'PUT':
+        if not has_permission(request, 'tenant.manage_settings'):
+            return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = TenantSettingsSerializer(tenant, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
