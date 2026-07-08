@@ -12,11 +12,14 @@ get_active_tenant(request):
     - Founder      → jis client ke workspace mein hai (SupportSession se resolve)
     - Founder (no session) → None
 
-    NOTE (known limitation, Step 5 mein solve hoga): agar ek user ki
-    multiple active Memberships hain (multi-tenant staff, abhi tak koi
-    aisa real case nahi hai), yeh function abhi sirf sabse recent wali
-    utha leta hai — "kaunsa business is session mein active hai" wala
-    proper selection mechanism Step 5 (multi-tenant login flow) mein aayega.
+    Multi-tenant staff (2+ active Memberships): login ke waqt jo tenant
+    choose kiya tha, uski id JWT access token mein 'tenant_id' custom
+    claim ke roop mein baked hoti hai (users/views.py get_tokens_for_user).
+    Yeh claim SIRF disambiguation ke liye consult hoti hai — is baat ki
+    fresh check ki DB se turant call kiya jaata hai ki us tenant ki
+    Membership abhi bhi status='active' hai ya nahi (agar beech mein
+    suspend ho gayi, agli hi request pe access chala jaata hai — koi
+    permission/role kabhi is claim mein cache nahi hoti).
 
 is_edit_mode(request):
     Founder view mode mein hai ya edit mode mein?
@@ -27,16 +30,43 @@ is_edit_mode(request):
 def get_active_tenant(request):
     user = request.user
 
-    # Normal business user — active Membership se tenant resolve karo
+    # Normal business user — active Membership(s) se tenant resolve karo
     if user.role != 'super_admin':
         from teams.models import Membership
-        membership = (
+        memberships = (
             Membership.objects
             .filter(user=user, status='active')
             .select_related('tenant')
-            .first()
         )
-        return membership.tenant if membership else None
+        count = memberships.count()
+
+        if count == 0:
+            return None
+
+        if count == 1:
+            return memberships.first().tenant
+
+        # 2+ active memberships — JWT ke 'tenant_id' claim se disambiguate
+        # karo (login ke waqt select kiya gaya business). Claim ko blindly
+        # trust nahi kiya — Membership abhi bhi active hai ya nahi, yeh
+        # fresh DB filter (upar wali memberships queryset) se hi confirm
+        # hota hai, isliye suspend hote hi agli request pe access chala
+        # jaata hai.
+        auth = getattr(request, 'auth', None)
+        tenant_id = None
+        if auth is not None:
+            try:
+                tenant_id = auth.get('tenant_id')
+            except (AttributeError, TypeError):
+                tenant_id = None
+
+        if tenant_id:
+            match = memberships.filter(tenant_id=tenant_id).first()
+            if match:
+                return match.tenant
+
+        # Ambiguous — koi valid selection nahi mila
+        return None
 
     # Founder hai — active support session check karo (UNCHANGED)
     from superadmin.models import SupportSession

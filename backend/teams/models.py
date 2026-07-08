@@ -333,3 +333,62 @@ class LoginEvent(models.Model):
 
     def __str__(self):
         return f"{self.user.email} @ {self.created_at}"
+
+
+class PendingLoginToken(models.Model):
+    """
+    Multi-tenant login ka 2-step flow: pehle email+password verify hota
+    hai. Agar user ki 2+ active Memberships hain (multiple businesses),
+    turant JWT nahi milta — yeh temporary, single-use, opaque token
+    banta hai (2 minute expiry). Frontend business-selection screen
+    dikhata hai, user choose karta hai, phir /login/select-business/
+    is token + tenant_id ke saath call hoti hai, tabhi asli JWT milta hai.
+
+    Jaanbujh kar SimpleJWT ka koi custom token-type NAHI banaya — yeh
+    ek plain random string hai (secrets.token_urlsafe), DB mein store
+    hota hai. Isse JWTAuthentication ke through kabhi validate nahi
+    hota, isliye yeh kisi aur API endpoint pe bearer token ki tarah
+    accidentally use nahi ho sakta — sirf ek hi jagah (select-business
+    view) ismein lookup hoti hai.
+
+    Render Free tier pe Celery/Redis/cron nahi hai — isliye expired
+    rows ka automatic background cleanup nahi hai. Iski jagah
+    cleanup_expired() ko login_view aur select_business_view dono ke
+    shuru mein call kiya jaata hai (lazy cleanup, koi extra infra nahi
+    chahiye). Phase 12 mein jab Celery already exist karega, isko wahan
+    move kiya ja sakta hai.
+    """
+
+    EXPIRY_MINUTES = 2
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='pending_login_tokens'
+    )
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['token']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def is_expired(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        return timezone.now() > self.created_at + timedelta(minutes=self.EXPIRY_MINUTES)
+
+    @staticmethod
+    def cleanup_expired():
+        """Lazy cleanup — login_view/select_business_view ke shuru mein call hota hai."""
+        from django.utils import timezone
+        from datetime import timedelta
+        cutoff = timezone.now() - timedelta(minutes=PendingLoginToken.EXPIRY_MINUTES)
+        PendingLoginToken.objects.filter(created_at__lt=cutoff).delete()
+
+    def __str__(self):
+        return f"{self.user.email} pending-login ({'used' if self.used else 'active'})"

@@ -130,6 +130,11 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    # /login/select-business/ ke liye rate limit (Team Management,
+    # multi-tenant login flow) — teams/throttles.py mein SelectBusinessThrottle
+    'DEFAULT_THROTTLE_RATES': {
+        'select_business': '5/min',
+    },
 }
 # Production Settings
 import os
