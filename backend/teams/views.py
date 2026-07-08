@@ -222,3 +222,211 @@ def accept_invite(request, token):
             'role': user.role,
         }
     }, status=status.HTTP_200_OK)
+
+
+# ─── ROLE LISTING ──────────────────────────────────────────
+# Gap found while building member management: invite_member (above)
+# requires a role_id, but nothing exposed the list of valid roles for
+# the frontend to populate a dropdown from. Needed by both the invite
+# form and the change-role action below.
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def role_list(request):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'team.manage'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    roles = Role.objects.filter(Q(tenant__isnull=True) | Q(tenant=tenant)).order_by('name')
+    return Response([{
+        'id': str(r.id),
+        'name': r.name,
+        'description': r.description,
+        'is_system_role': r.is_system_role,
+    } for r in roles])
+
+
+# ─── MEMBER MANAGEMENT ─────────────────────────────────────
+
+def _serialize_membership(m):
+    return {
+        'id': str(m.id),
+        'email': m.user.email if m.user else m.invite_email,
+        'first_name': m.user.first_name if m.user else '',
+        'last_name': m.user.last_name if m.user else '',
+        'role_id': str(m.role_id),
+        'role_name': m.role.name,
+        'status': m.status,
+        'invited_by': m.invited_by.email if m.invited_by else None,
+        'joined_at': m.joined_at.isoformat() if m.joined_at else None,
+        'created_at': m.created_at.isoformat(),
+    }
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def member_list(request):
+    """
+    Read access is deliberately broader than write here: anyone with
+    team.manage OR team.view_activity can see the roster (Manager can
+    already see staff names/roles indirectly through the Activity Log,
+    so hiding the plain member list from them would restrict nothing
+    real while breaking the Team page for them). All mutations below
+    stay strictly team.manage-only.
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+    if not (has_permission(request, 'team.manage') or has_permission(request, 'team.view_activity')):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    qs = Membership.objects.filter(tenant=tenant).select_related('user', 'role', 'invited_by')
+    if request.query_params.get('include_removed') != 'true':
+        qs = qs.exclude(status='removed')
+
+    return Response([_serialize_membership(m) for m in qs])
+
+
+def _get_target_membership(tenant, membership_id):
+    return Membership.objects.select_related('user', 'role', 'tenant').filter(
+        pk=membership_id, tenant=tenant
+    ).first()
+
+
+def _active_owner_count(tenant, exclude_pk=None):
+    qs = Membership.objects.filter(tenant=tenant, role__name='Owner', status='active')
+    if exclude_pk:
+        qs = qs.exclude(pk=exclude_pk)
+    return qs.count()
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def suspend_member(request, membership_id):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'team.manage'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    target = _get_target_membership(tenant, membership_id)
+    if not target:
+        return Response({'error': 'Member not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if target.user_id == request.user.id:
+        return Response({'error': 'You cannot suspend yourself.'}, status=400)
+    if target.status != 'active':
+        return Response({'error': f'Cannot suspend a member with status "{target.status}".'}, status=400)
+    if target.role.name == 'Owner' and _active_owner_count(tenant, exclude_pk=target.pk) == 0:
+        return Response({'error': 'Cannot suspend the last active Owner of this business.'}, status=400)
+
+    target.status = 'suspended'
+    target.save()
+
+    ActivityLog.objects.create(
+        actor=request.user, tenant=tenant, action='member_suspended',
+        target_type='membership', target_name=target.user.email if target.user else target.invite_email,
+    )
+    return Response(_serialize_membership(target))
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def reactivate_member(request, membership_id):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'team.manage'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    target = _get_target_membership(tenant, membership_id)
+    if not target:
+        return Response({'error': 'Member not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if target.status != 'suspended':
+        return Response({'error': f'Cannot reactivate a member with status "{target.status}".'}, status=400)
+
+    target.status = 'active'
+    target.save()
+
+    ActivityLog.objects.create(
+        actor=request.user, tenant=tenant, action='member_reactivated',
+        target_type='membership', target_name=target.user.email if target.user else target.invite_email,
+    )
+    return Response(_serialize_membership(target))
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def remove_member(request, membership_id):
+    """Soft delete — status='removed', record kept (matches Membership's
+    own status choice comment: 'Staff ko team se hata diya gaya (soft —
+    record rehta hai)')."""
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'team.manage'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    target = _get_target_membership(tenant, membership_id)
+    if not target:
+        return Response({'error': 'Member not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if target.user_id == request.user.id:
+        return Response({'error': 'You cannot remove yourself.'}, status=400)
+    if target.status == 'removed':
+        return Response({'error': 'This member has already been removed.'}, status=400)
+    if target.role.name == 'Owner' and target.status == 'active' and _active_owner_count(tenant, exclude_pk=target.pk) == 0:
+        return Response({'error': 'Cannot remove the last active Owner of this business.'}, status=400)
+
+    target_name = target.user.email if target.user else target.invite_email
+    target.status = 'removed'
+    target.save()
+
+    ActivityLog.objects.create(
+        actor=request.user, tenant=tenant, action='member_removed',
+        target_type='membership', target_name=target_name,
+    )
+    return Response({'message': 'Member removed.'})
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def change_member_role(request, membership_id):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'team.manage'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    target = _get_target_membership(tenant, membership_id)
+    if not target:
+        return Response({'error': 'Member not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if target.user_id == request.user.id:
+        return Response({'error': 'You cannot change your own role.'}, status=400)
+    if target.status == 'removed':
+        return Response({'error': 'Cannot change the role of a removed member.'}, status=400)
+
+    role_id = request.data.get('role_id')
+    if not role_id:
+        return Response({'error': 'role_id is required.'}, status=400)
+    new_role = Role.objects.filter(pk=role_id).filter(
+        Q(tenant__isnull=True) | Q(tenant=tenant)
+    ).first()
+    if not new_role:
+        return Response({'error': 'Invalid role.'}, status=400)
+
+    if (target.role.name == 'Owner' and new_role.name != 'Owner'
+            and target.status == 'active'
+            and _active_owner_count(tenant, exclude_pk=target.pk) == 0):
+        return Response({'error': 'Cannot change the role of the last active Owner of this business.'}, status=400)
+
+    old_role_name = target.role.name
+    target.role = new_role
+    target.save()
+
+    ActivityLog.objects.create(
+        actor=request.user, tenant=tenant, action='role_changed',
+        target_type='membership', target_name=target.user.email if target.user else target.invite_email,
+        details={'from': old_role_name, 'to': new_role.name},
+    )
+    return Response(_serialize_membership(target))
