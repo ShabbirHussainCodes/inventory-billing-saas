@@ -11,10 +11,19 @@ has_permission(request, codename):
     Do alag paths:
     - Founder (super_admin): Role/Permission catalog unhe apply nahi
       hota — plan mein explicitly decide hua tha ki Founder ka access
-      is poore system se completely alag rahega. Unka access hamesha
-      is_edit_mode() (SupportSession-based) se decide hota hai —
-      codename yahan ignore hota hai (Founder edit mode mein ho toh
-      sab allowed, view mode mein kuch bhi nahi).
+      is poore system se completely alag rahega. Read-only requests
+      (GET/HEAD) hamesha allowed hain agar active support session hai
+      (View Mode ka poora point hi "dekh sakte ho" hai). Sirf state-
+      changing requests (POST/PUT/PATCH/DELETE) ke liye is_edit_mode()
+      check hota hai. Codename yahan ignore hota hai — Founder ke liye
+      yeh check purely method-based hai, koi granular permission catalog
+      unhe apply nahi hoti.
+      (BUG FIX: pehle version mein GET requests bhi is_edit_mode() se
+      block ho jaate the — matlab Founder View Mode mein kuch bhi nahi
+      dekh paata, jo View Mode ke poore purpose ko hi ulta kar deta.
+      is_edit_mode() khud kabhi kisi existing view mein call nahi hoti
+      thi is se pehle — View/Edit Mode ka distinction ab tak sirf
+      frontend UI convention tha, backend kabhi enforce nahi karta tha.)
     - Normal user / staff: get_active_tenant() jo tenant resolve karta
       hai, usi tenant ki active Membership dhoondi jaati hai, aur uske
       Role ke paas woh specific permission (codename) hai ya nahi,
@@ -43,8 +52,13 @@ def has_permission(request, codename):
     if not user or not user.is_authenticated:
         return False
 
-    # Founder — Role/Permission system bypass, is_edit_mode() decide karta hai
+    # Founder — Role/Permission system bypass. Reads (GET/HEAD) allowed
+    # hamesha (agar active support session hai — get_active_tenant() ne
+    # already tenant resolve kiya hoga jahan se yeh call ho rahi hai).
+    # Writes ke liye is_edit_mode() check hota hai.
     if user.role == 'super_admin':
+        if request.method in ('GET', 'HEAD'):
+            return True
         from superadmin.utils import is_edit_mode
         return is_edit_mode(request)
 
