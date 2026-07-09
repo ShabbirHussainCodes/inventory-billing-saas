@@ -224,6 +224,67 @@ def accept_invite(request, token):
     }, status=status.HTTP_200_OK)
 
 
+# ─── ACTIVITY LOG ──────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def activity_log_list(request):
+    """
+    Team activity feed — team.view_activity gated (Owner + Manager per
+    the finalized matrix; Sales Staff/Accountant/Viewer excluded).
+    Pagination pattern copied from inventory.stock_movement_list for
+    consistency across the codebase.
+    Query params: action, days, page, page_size
+    """
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+    if not has_permission(request, 'team.view_activity'):
+        return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    logs = ActivityLog.objects.filter(tenant=tenant).select_related('actor')
+
+    action_filter = request.query_params.get('action')
+    if action_filter:
+        logs = logs.filter(action=action_filter)
+
+    days = request.query_params.get('days')
+    if days:
+        try:
+            since = timezone.now() - timezone.timedelta(days=int(days))
+            logs = logs.filter(created_at__gte=since)
+        except ValueError:
+            pass
+
+    logs = logs.order_by('-created_at')
+
+    total_count = logs.count()
+    page = max(1, int(request.query_params.get('page', 1)))
+    page_size = min(100, max(10, int(request.query_params.get('page_size', 50))))
+    start = (page - 1) * page_size
+    end = start + page_size
+    logs_page = logs[start:end]
+
+    data = [{
+        'id': str(log.id),
+        'actor_email': log.actor.email,
+        'action': log.action,
+        'action_label': log.get_action_display(),
+        'target_type': log.target_type,
+        'target_name': log.target_name,
+        'details': log.details,
+        'created_at': log.created_at.isoformat(),
+    } for log in logs_page]
+
+    return Response({
+        'count': total_count,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': max(1, (total_count + page_size - 1) // page_size),
+        'results': data,
+    })
+
+
 # ─── ROLE LISTING ──────────────────────────────────────────
 # Gap found while building member management: invite_member (above)
 # requires a role_id, but nothing exposed the list of valid roles for

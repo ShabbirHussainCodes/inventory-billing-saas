@@ -82,6 +82,9 @@ def category_detail(request, pk):
             from superadmin.audit import log_action
             log_action(request, 'product_updated', tenant=tenant,
                        target_type='category', target_name=category.name)
+            from teams.activity import log_team_activity
+            log_team_activity(request, 'product_updated', tenant=tenant,
+                               target_type='category', target_name=category.name)
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -92,6 +95,9 @@ def category_detail(request, pk):
         from superadmin.audit import log_action
         log_action(request, 'product_deleted', tenant=tenant,
                    target_type='category', target_name=category.name)
+        from teams.activity import log_team_activity
+        log_team_activity(request, 'product_deleted', tenant=tenant,
+                           target_type='category', target_name=category.name)
         return Response({'message': 'Category deleted successfully.'})
 
 
@@ -157,6 +163,9 @@ def supplier_detail(request, pk):
             from superadmin.audit import log_action
             log_action(request, 'product_updated', tenant=tenant,
                        target_type='supplier', target_name=supplier.name)
+            from teams.activity import log_team_activity
+            log_team_activity(request, 'product_updated', tenant=tenant,
+                               target_type='supplier', target_name=supplier.name)
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -166,6 +175,9 @@ def supplier_detail(request, pk):
         from superadmin.audit import log_action
         log_action(request, 'product_deleted', tenant=tenant,
                    target_type='supplier', target_name=supplier.name)
+        from teams.activity import log_team_activity
+        log_team_activity(request, 'product_deleted', tenant=tenant,
+                           target_type='supplier', target_name=supplier.name)
         return Response({'message': 'Supplier deleted successfully.'})
 
 
@@ -245,6 +257,10 @@ def product_list(request):
             log_action(request, 'product_created', tenant=tenant,
                        target_type='product', target_name=product.name,
                        details={'sku': product.sku})
+            from teams.activity import log_team_activity
+            log_team_activity(request, 'product_created', tenant=tenant,
+                               target_type='product', target_name=product.name,
+                               details={'sku': product.sku})
             return Response(
                 serializer.data,
                 status=status.HTTP_201_CREATED
@@ -306,6 +322,9 @@ def product_detail(request, pk):
             from superadmin.audit import log_action
             log_action(request, 'product_updated', tenant=tenant,
                        target_type='product', target_name=product.name)
+            from teams.activity import log_team_activity
+            log_team_activity(request, 'product_updated', tenant=tenant,
+                               target_type='product', target_name=product.name)
             return Response(serializer.data)
         return Response(
             serializer.errors,
@@ -320,6 +339,9 @@ def product_detail(request, pk):
         from superadmin.audit import log_action
         log_action(request, 'product_deleted', tenant=tenant,
                    target_type='product', target_name=product.name)
+        from teams.activity import log_team_activity
+        log_team_activity(request, 'product_deleted', tenant=tenant,
+                           target_type='product', target_name=product.name)
         return Response(
             {'message': 'Product deleted successfully.'},
             status=status.HTTP_200_OK

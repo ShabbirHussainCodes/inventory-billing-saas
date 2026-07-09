@@ -54,6 +54,9 @@ def customer_list(request):
             from superadmin.audit import log_action
             log_action(request, 'customer_created', tenant=tenant,
                        target_type='customer', target_name=customer.name)
+            from teams.activity import log_team_activity
+            log_team_activity(request, 'customer_created', tenant=tenant,
+                               target_type='customer', target_name=customer.name)
             return Response(
                 serializer.data,
                 status=status.HTTP_201_CREATED
@@ -115,6 +118,9 @@ def customer_detail(request, pk):
             from superadmin.audit import log_action
             log_action(request, 'customer_updated', tenant=tenant,
                        target_type='customer', target_name=customer.name)
+            from teams.activity import log_team_activity
+            log_team_activity(request, 'customer_updated', tenant=tenant,
+                               target_type='customer', target_name=customer.name)
             return Response(serializer.data)
         return Response(
             serializer.errors,
@@ -129,6 +135,9 @@ def customer_detail(request, pk):
         from superadmin.audit import log_action
         log_action(request, 'customer_deleted', tenant=tenant,
                    target_type='customer', target_name=customer.name)
+        from teams.activity import log_team_activity
+        log_team_activity(request, 'customer_deleted', tenant=tenant,
+                           target_type='customer', target_name=customer.name)
         return Response(
             {'message': 'Customer deleted successfully.'},
             status=status.HTTP_200_OK
@@ -265,6 +274,10 @@ def invoice_detail(request, pk):
         log_action(request, 'invoice_status_changed', tenant=tenant,
                    target_type='invoice', target_name=invoice_number,
                    details={'action': 'deleted'})
+        from teams.activity import log_team_activity
+        log_team_activity(request, 'invoice_status_changed', tenant=tenant,
+                           target_type='invoice', target_name=invoice_number,
+                           details={'action': 'deleted'})
 
         return Response({'message': 'Draft invoice deleted.'}, status=status.HTTP_200_OK)
 
@@ -291,6 +304,10 @@ def invoice_detail(request, pk):
             log_action(request, 'invoice_status_changed', tenant=tenant,
                        target_type='invoice', target_name=updated_invoice.invoice_number,
                        details={'action': 'edited'})
+            from teams.activity import log_team_activity
+            log_team_activity(request, 'invoice_status_changed', tenant=tenant,
+                               target_type='invoice', target_name=updated_invoice.invoice_number,
+                               details={'action': 'edited'})
 
             return Response(InvoiceSerializer(updated_invoice).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -324,6 +341,10 @@ def invoice_update_status(request, pk):
     log_action(request, 'invoice_status_changed', tenant=tenant,
                target_type='invoice', target_name=invoice.invoice_number,
                details={'from': old_status, 'to': new_status})
+    from teams.activity import log_team_activity
+    log_team_activity(request, 'invoice_status_changed', tenant=tenant,
+                       target_type='invoice', target_name=invoice.invoice_number,
+                       details={'from': old_status, 'to': new_status})
     return Response({'id': str(invoice.id), 'status': invoice.status})
 
 
