@@ -346,6 +346,10 @@ export default function TeamPage() {
             {canManage ? "Invite staff, manage roles and access" : "View your team (read-only)"}
           </p>
         </div>
+        <a href="/team/activity"
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition">
+          Activity Log →
+        </a>
         {canManage && (
           <button onClick={() => setInviteModal(true)}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition">

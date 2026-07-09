@@ -19,6 +19,7 @@ import CategoriesSuppliersPage from "./pages/CategoriesSuppliersPage"
 import PurchaseOrdersPage from "./pages/PurchaseOrdersPage"
 import StockHistoryPage from "./pages/StockHistoryPage"
 import TeamPage from "./pages/TeamPage"
+import TeamActivityLogPage from "./pages/TeamActivityLogPage"
 import AcceptInvitePage from "./pages/AcceptInvitePage"
 
 // Founder Command Center (with AdminLayout sidebar)
@@ -68,6 +69,7 @@ function App() {
         <Route path="/stock-history" element={<ProtectedRoute><StockHistoryPage /></ProtectedRoute>} />
         <Route path="/customers" element={<ProtectedRoute><CustomersPage /></ProtectedRoute>} />
         <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
+        <Route path="/team/activity" element={<ProtectedRoute><TeamActivityLogPage /></ProtectedRoute>} />
 
         {/* Founder Command Center — AdminLayout sidebar ke saath */}
         <Route element={<RoleRoute role="super_admin"><AdminLayout /></RoleRoute>}>
