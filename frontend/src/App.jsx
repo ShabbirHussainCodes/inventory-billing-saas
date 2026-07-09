@@ -18,6 +18,8 @@ import SettingsPage from "./pages/SettingsPage"
 import CategoriesSuppliersPage from "./pages/CategoriesSuppliersPage"
 import PurchaseOrdersPage from "./pages/PurchaseOrdersPage"
 import StockHistoryPage from "./pages/StockHistoryPage"
+import TeamPage from "./pages/TeamPage"
+import AcceptInvitePage from "./pages/AcceptInvitePage"
 
 // Founder Command Center (with AdminLayout sidebar)
 import RoleRoute from "./components/RoleRoute"
@@ -47,6 +49,7 @@ function App() {
         {/* Public */}
         <Route path="/" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/accept-invite/:token" element={<AcceptInvitePage />} />
 
         {/* Business owner / staff */}
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
@@ -64,6 +67,7 @@ function App() {
         <Route path="/purchase-orders" element={<ProtectedRoute><PurchaseOrdersPage /></ProtectedRoute>} />
         <Route path="/stock-history" element={<ProtectedRoute><StockHistoryPage /></ProtectedRoute>} />
         <Route path="/customers" element={<ProtectedRoute><CustomersPage /></ProtectedRoute>} />
+        <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
 
         {/* Founder Command Center — AdminLayout sidebar ke saath */}
         <Route element={<RoleRoute role="super_admin"><AdminLayout /></RoleRoute>}>

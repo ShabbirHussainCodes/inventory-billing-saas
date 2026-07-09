@@ -179,6 +179,28 @@ export const billingAPI = {
   deleteInvoice: (id) => api.delete(`/billing/invoices/${id}/`),
 }
 
+export const teamAPI = {
+  getRoles: () => api.get('/team/roles/'),
+  getMembers: (includeRemoved = false) =>
+    api.get(`/team/members/${includeRemoved ? '?include_removed=true' : ''}`),
+  inviteMember: (data) => api.post('/team/invite/', data),
+  getInviteDetail: (token) => api.get(`/team/invite/${token}/`),
+  acceptInvite: (token, data) => api.post(`/team/invite/${token}/accept/`, data),
+  suspendMember: (id) => api.patch(`/team/members/${id}/suspend/`),
+  reactivateMember: (id) => api.patch(`/team/members/${id}/reactivate/`),
+  removeMember: (id) => api.delete(`/team/members/${id}/`),
+  changeMemberRole: (id, roleId) => api.patch(`/team/members/${id}/role/`, { role_id: roleId }),
+
+  getActivityLog: ({ action = null, days = null, page = 1, pageSize = 50 } = {}) => {
+    const params = new URLSearchParams()
+    if (action) params.append('action', action)
+    if (days) params.append('days', days)
+    params.append('page', page)
+    params.append('page_size', pageSize)
+    return api.get(`/team/activity/?${params.toString()}`)
+  },
+}
+
 export const tenantAPI = {
   getSettings: () => api.get('/tenant/settings/'),
   updateSettings: (data) => api.put('/tenant/settings/', data),
