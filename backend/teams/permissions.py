@@ -41,6 +41,61 @@ from functools import wraps
 from rest_framework.response import Response
 
 
+def _get_active_view_as_session(user):
+    """
+    Phase B.5 — "View As Member".
+
+    Returns the initiator's (Owner's or Founder's) active ViewAsSession
+    if one exists AND is still valid right now. Validity is checked
+    FRESH from the DB on every single call — same "Turant Effect
+    Guarantee" as the rest of this file — so if the target's role/status
+    changed, the business got suspended, or (for a Founder initiator)
+    their SupportSession ended, the session is ended right here and
+    None is returned, meaning the caller silently falls back to their
+    own normal permissions on this very request. No stale session can
+    ever grant or restrict access based on old data.
+    """
+    from teams.models import ViewAsSession
+
+    session = (
+        ViewAsSession.objects
+        .filter(initiator=user, is_active=True)
+        .select_related('target_membership', 'target_membership__role', 'tenant')
+        .first()
+    )
+    if not session:
+        return None
+
+    target = session.target_membership
+    end_reason = None
+
+    if target.status == 'suspended':
+        end_reason = 'target_suspended'
+    elif target.status != 'active':
+        end_reason = 'target_removed'
+    elif target.role_id != session.target_role_at_start_id:
+        end_reason = 'target_role_changed'
+    elif not session.tenant.is_active:
+        end_reason = 'business_suspended'
+    elif user.role == 'super_admin':
+        from superadmin.models import SupportSession
+        still_supporting = SupportSession.objects.filter(
+            founder=user, tenant=session.tenant, is_active=True
+        ).exists()
+        if not still_supporting:
+            end_reason = 'founder_support_ended'
+
+    if end_reason:
+        from django.utils import timezone
+        session.is_active = False
+        session.ended_at = timezone.now()
+        session.end_reason = end_reason
+        session.save(update_fields=['is_active', 'ended_at', 'end_reason'])
+        return None
+
+    return session
+
+
 def has_permission(request, codename):
     """
     request  — DRF/Django request object, request.user set hona chahiye
@@ -51,6 +106,21 @@ def has_permission(request, codename):
     user = getattr(request, 'user', None)
     if not user or not user.is_authenticated:
         return False
+
+    # View-As Member (Phase B.5) — checked FIRST, ahead of both the
+    # Founder path and the normal-user path below, because it must
+    # override Founder's usual "GET always allowed" rule too: the whole
+    # point of View-As is to see EXACTLY what the target member sees,
+    # nothing more.
+    view_as = _get_active_view_as_session(user)
+    if view_as is not None:
+        if request.method not in ('GET', 'HEAD') and view_as.mode != 'edit':
+            return False
+        return (
+            view_as.target_membership.role.role_permissions
+            .filter(permission__codename=codename)
+            .exists()
+        )
 
     # Founder — Role/Permission system bypass. Reads (GET/HEAD) allowed
     # hamesha (agar active support session hai — get_active_tenant() ne

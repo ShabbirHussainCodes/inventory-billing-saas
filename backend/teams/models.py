@@ -220,6 +220,91 @@ class Membership(models.Model):
         super().save(*args, **kwargs)
 
 
+class ViewAsSession(models.Model):
+    """
+    "View As Member" session tracker — lets an Owner (or a Founder who is
+    already inside an active SupportSession for this tenant) see the app
+    exactly as a specific staff member would, without logging in as them.
+
+    Deliberately mirrors superadmin.models.SupportSession's shape
+    (mode/is_active/started_at/ended_at, "close old session before
+    starting new one" pattern in the view) — same UX convention, scoped
+    to one specific Membership instead of the whole tenant.
+
+    Only ONE active session per initiator at a time — enforced at the
+    view level (see teams/views.py start_view_as), same as SupportSession.
+    """
+
+    MODE_CHOICES = [
+        ('view', 'View Only'),
+        ('edit', 'Edit Simulation'),
+    ]
+
+    END_REASON_CHOICES = [
+        ('manual', 'Manual Exit'),
+        ('target_role_changed', 'Target Role Changed'),
+        ('target_suspended', 'Target Suspended'),
+        ('target_removed', 'Target Removed'),
+        ('business_suspended', 'Business Suspended'),
+        ('founder_support_ended', 'Founder Support Session Ended'),
+        ('initiator_logged_out', 'Initiator Logged Out'),
+        ('superseded', 'Superseded By New Session'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Owner's own CustomUser, OR the Founder's CustomUser (only valid while
+    # the Founder has an active SupportSession for the same tenant —
+    # enforced in the view, not here).
+    initiator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='view_as_sessions_started'
+    )
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='view_as_sessions'
+    )
+    # Jis staff member ki tarah dekha ja raha hai
+    target_membership = models.ForeignKey(
+        Membership,
+        on_delete=models.CASCADE,
+        related_name='view_as_sessions_targeting'
+    )
+
+    # Snapshot of target_membership.role at the moment this session started.
+    # Compared fresh on every permission check (see teams/permissions.py) —
+    # if the Owner changes this member's role while being viewed-as, the
+    # mismatch is detected on the very next request and the session ends
+    # automatically (Turant Effect applies to the session's own validity,
+    # not just to permission lookups).
+    target_role_at_start = models.ForeignKey(
+        Role,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='+'
+    )
+
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='view')
+    is_active = models.BooleanField(default=True)
+
+    started_at = models.DateTimeField(auto_now_add=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    end_reason = models.CharField(max_length=30, blank=True, default='', choices=END_REASON_CHOICES)
+
+    class Meta:
+        ordering = ['-started_at']
+        indexes = [
+            models.Index(fields=['initiator', 'is_active']),
+            models.Index(fields=['tenant', 'is_active']),
+            models.Index(fields=['target_membership', 'is_active']),
+        ]
+
+    def __str__(self):
+        return f"{self.initiator.email} viewing as {self.target_membership} ({self.mode})"
+
+
 class ActivityLog(models.Model):
     """
     Team activity log — staff ke actions (invoice/price change/delete,

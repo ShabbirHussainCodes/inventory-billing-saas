@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 import Layout from "../components/Layout"
 import { teamAPI } from "../services/api"
 import { getUser } from "../utils/auth"
@@ -221,6 +222,7 @@ export default function TeamPage() {
   // on your own row too, so the button simply isn't there instead of
   // failing with a confusing error after you click it.
   const currentUserEmail = getUser().email
+  const navigate = useNavigate()
 
   const [loading, setLoading] = useState(true)
   const [accessDenied, setAccessDenied] = useState(false)
@@ -326,6 +328,22 @@ export default function TeamPage() {
     }
   }
 
+  // Phase B.5 — View As Member. Only the Owner can start one (Founder
+  // starts theirs from inside Support Mode, not from here) — `canManage`
+  // already means "has team.manage", which per the finalized permission
+  // matrix is Owner-exclusive, so it doubles as the right gate here too.
+  const handleViewAs = async (member) => {
+    setBusyId(member.id)
+    try {
+      await teamAPI.startViewAs(member.id)
+      navigate("/dashboard")
+    } catch (e) {
+      showToast(e?.response?.data?.error || "Failed to start View As.")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   if (!loading && accessDenied) {
     return (
       <Layout>
@@ -412,6 +430,12 @@ export default function TeamPage() {
                     <button onClick={() => handleReactivate(m)} disabled={busyId === m.id}
                       className="rounded-lg border border-green-100 px-2.5 py-1 text-xs text-green-600 hover:bg-green-50 transition disabled:opacity-50">
                       Reactivate
+                    </button>
+                  )}
+                  {m.status === 'active' && (
+                    <button onClick={() => handleViewAs(m)} disabled={busyId === m.id}
+                      className="rounded-lg border border-blue-100 px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 transition disabled:opacity-50">
+                      {busyId === m.id ? "…" : "View As"}
                     </button>
                   )}
                   <button onClick={() => setRemoveTarget(m)} disabled={busyId === m.id}

@@ -35,6 +35,16 @@ def log_action(
 
     Sirf super_admin ke actions log hote hain abhi.
     Exception raise nahi hogi — logging always silent fails.
+
+    Phase B.5 — "View As Member" (Founder side): AuditLog mein
+    Team ActivityLog jaisa dedicated viewed_as_membership FK column
+    nahi hai (schema change avoid kiya gaya — yeh case rare hai,
+    Founder View-As sirf tabhi possible hai jab woh already ek
+    SupportSession ke andar ho). Iski jagah, agar Founder ka active
+    ViewAsSession hai, details JSON mein 'viewed_as' key add ho jaati
+    hai — details field already isi tarah ke extensible use ke liye
+    design kiya gaya tha. Real actor (request.user, Founder) yahan
+    bhi kabhi overwrite nahi hota.
     """
     try:
         # Sirf founder actions log karo abhi
@@ -49,6 +59,25 @@ def log_action(
         if tenant is None:
             return  # Tenant ke bina log nahi ho sakta
 
+        details = dict(details or {})
+        try:
+            from teams.models import ViewAsSession
+            active_view_as = (
+                ViewAsSession.objects
+                .filter(initiator=request.user, is_active=True)
+                .select_related('target_membership', 'target_membership__user', 'target_membership__role')
+                .first()
+            )
+            if active_view_as:
+                vam = active_view_as.target_membership
+                details['viewed_as'] = {
+                    'membership_id': str(vam.id),
+                    'name': (vam.user.first_name if vam.user else vam.invite_email) or vam.invite_email,
+                    'role_name': vam.role.name,
+                }
+        except Exception:
+            pass
+
         from superadmin.models import AuditLog
         AuditLog.objects.create(
             actor=request.user,
@@ -56,7 +85,7 @@ def log_action(
             action=action,
             target_type=target_type,
             target_name=target_name,
-            details=details or {},
+            details=details,
             is_support_action=True,
         )
 

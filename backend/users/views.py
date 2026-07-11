@@ -210,6 +210,23 @@ def select_business_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_view(request):
+    # Phase B.5 — agar is user ne "View As Member" session start kar rakha
+    # tha (Owner ya Founder), logout ke saath woh bhi khatam ho jaani
+    # chahiye. Access token apni natural expiry tak technically valid
+    # rehta hai (stateless JWT ki hi limitation hai, is feature ki nahi),
+    # lekin is se aage koi bhi request ab ViewAsSession ke through nahi
+    # jaayegi — is_active=False hote hi has_permission() ka view-as
+    # branch turant ignore kar dega, initiator apni normal permissions
+    # (ya Founder ka normal View Mode) pe fall back ho jaayega.
+    try:
+        from teams.models import ViewAsSession
+        from django.utils import timezone
+        ViewAsSession.objects.filter(
+            initiator=request.user, is_active=True
+        ).update(is_active=False, ended_at=timezone.now(), end_reason='initiator_logged_out')
+    except Exception:
+        pass
+
     try:
         refresh_token = request.data.get('refresh')
         token = RefreshToken(refresh_token)

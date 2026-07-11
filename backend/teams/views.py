@@ -7,7 +7,7 @@ from django.db.models import Q
 from django.utils import timezone
 import secrets
 
-from .models import Role, Membership, ActivityLog
+from .models import Role, Membership, ActivityLog, ViewAsSession
 from .permissions import has_permission
 from .throttles import AcceptInviteThrottle
 from superadmin.utils import get_active_tenant
@@ -242,7 +242,9 @@ def activity_log_list(request):
     if not has_permission(request, 'team.view_activity'):
         return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
-    logs = ActivityLog.objects.filter(tenant=tenant).select_related('actor')
+    logs = ActivityLog.objects.filter(tenant=tenant).select_related(
+        'actor', 'viewed_as_membership', 'viewed_as_membership__user', 'viewed_as_membership__role'
+    )
 
     action_filter = request.query_params.get('action')
     if action_filter:
@@ -265,14 +267,30 @@ def activity_log_list(request):
     end = start + page_size
     logs_page = logs[start:end]
 
+    def _viewed_as_payload(log):
+        # Phase B.5 — agar yeh action "View As Member" mode mein perform
+        # hua tha, real actor ke saath-saath yeh bhi batao ki woh kis
+        # member ki tarah dekh raha tha. Real actor (log.actor) KABHI
+        # overwrite nahi hota — yeh sirf additional context hai.
+        vam = log.viewed_as_membership
+        if not vam:
+            return None
+        return {
+            'membership_id': str(vam.id),
+            'name': (vam.user.first_name if vam.user else vam.invite_email) or vam.invite_email,
+            'role_name': vam.role.name,
+        }
+
     data = [{
         'id': str(log.id),
         'actor_email': log.actor.email,
+        'actor_name': log.actor.first_name or log.actor.email,
         'action': log.action,
         'action_label': log.get_action_display(),
         'target_type': log.target_type,
         'target_name': log.target_name,
         'details': log.details,
+        'viewed_as': _viewed_as_payload(log),
         'created_at': log.created_at.isoformat(),
     } for log in logs_page]
 
@@ -491,3 +509,203 @@ def change_member_role(request, membership_id):
         details={'from': old_role_name, 'to': new_role.name},
     )
     return Response(_serialize_membership(target))
+
+
+# ─── VIEW AS MEMBER (Phase B.5) ─────────────────────────────
+#
+# Owner (or a Founder already inside an active SupportSession for this
+# tenant) can see the app exactly as a specific staff member would,
+# without logging in as them. Deliberately mirrors superadmin.views'
+# enter_workspace / exit_workspace / switch_mode / get_active_session
+# quartet — same "close old session before starting new one" pattern,
+# same view/edit toggle convention.
+#
+# Guardrails enforced here (not just in has_permission()):
+# - ONLY Owner or Founder may start a session — Manager and every other
+#   role are blocked even if they somehow had team.manage.
+# - Always starts in 'view' mode — Edit Simulation requires an explicit
+#   separate call to switch_view_as_mode(), never passed at start time.
+# - Can't target yourself, a non-active membership, or a membership
+#   outside your resolved tenant.
+
+def _target_tenant_for_view_as(request):
+    """
+    Resolve which tenant the initiator is allowed to start a View-As
+    session in, and confirm they're actually allowed to start one at all.
+    Returns (tenant, error_response_or_None).
+    """
+    user = request.user
+
+    if user.role == 'super_admin':
+        from superadmin.models import SupportSession
+        session = SupportSession.objects.filter(founder=user, is_active=True).select_related('tenant').first()
+        if not session:
+            return None, Response(
+                {'error': 'You must be inside an active Support Session to use View As Member.'},
+                status=400
+            )
+        return session.tenant, None
+
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return None, Response({'error': 'No active business context.'}, status=400)
+
+    is_owner = Membership.objects.filter(
+        user=user, tenant=tenant, status='active', role__name='Owner'
+    ).exists()
+    if not is_owner:
+        return None, Response(
+            {'error': 'Only the business Owner (or the Founder in Support Mode) can use View As Member.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    return tenant, None
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def start_view_as(request, membership_id):
+    tenant, error = _target_tenant_for_view_as(request)
+    if error:
+        return error
+
+    target = Membership.objects.select_related('user', 'role').filter(
+        pk=membership_id, tenant=tenant, status='active'
+    ).first()
+    if not target:
+        return Response({'error': 'Member not found or not active.'}, status=status.HTTP_404_NOT_FOUND)
+    if target.user_id == request.user.id:
+        return Response({'error': 'You cannot View As yourself.'}, status=400)
+
+    # Pehle se active session (agar hai) supersede karo — ek waqt mein
+    # sirf ek View-As session per initiator, SupportSession jaisa hi rule.
+    ViewAsSession.objects.filter(initiator=request.user, is_active=True).update(
+        is_active=False, ended_at=timezone.now(), end_reason='superseded'
+    )
+
+    session = ViewAsSession.objects.create(
+        initiator=request.user,
+        tenant=tenant,
+        target_membership=target,
+        target_role_at_start=target.role,
+        mode='view',   # hamesha View Only se shuru — Edit Simulation alag, explicit call
+    )
+
+    target_name = target.user.first_name if target.user else target.invite_email
+    log_details = {'role': target.role.name}
+    if request.user.role == 'super_admin':
+        from superadmin.audit import log_action
+        log_action(request, 'view_as_started', tenant=tenant,
+                   target_type='membership', target_name=target_name, details=log_details)
+    else:
+        from .activity import log_team_activity
+        log_team_activity(request, 'view_as_started', tenant=tenant,
+                          target_type='membership', target_name=target_name, details=log_details,
+                          viewed_as_membership=target)
+
+    return Response({
+        'session_id': str(session.id),
+        'target_membership_id': str(target.id),
+        'target_name': target_name,
+        'target_role': target.role.name,
+        'mode': session.mode,
+        'started_at': session.started_at.isoformat(),
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def end_view_as(request):
+    session = ViewAsSession.objects.filter(
+        initiator=request.user, is_active=True
+    ).select_related('tenant', 'target_membership', 'target_membership__user', 'target_membership__role').first()
+
+    if not session:
+        return Response({'error': 'No active View As session.'}, status=status.HTTP_404_NOT_FOUND)
+
+    target = session.target_membership
+    tenant = session.tenant
+    target_name = target.user.first_name if target.user else target.invite_email
+
+    session.is_active = False
+    session.ended_at = timezone.now()
+    session.end_reason = 'manual'
+    session.save(update_fields=['is_active', 'ended_at', 'end_reason'])
+
+    if request.user.role == 'super_admin':
+        from superadmin.audit import log_action
+        log_action(request, 'view_as_ended', tenant=tenant,
+                   target_type='membership', target_name=target_name)
+    else:
+        from .activity import log_team_activity
+        log_team_activity(request, 'view_as_ended', tenant=tenant,
+                          target_type='membership', target_name=target_name,
+                          viewed_as_membership=target)
+
+    return Response({'message': 'View As Member session ended.'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def switch_view_as_mode(request):
+    mode = request.data.get('mode')
+    if mode not in ('view', 'edit'):
+        return Response({'error': "Mode must be 'view' or 'edit'."}, status=400)
+
+    session = ViewAsSession.objects.filter(
+        initiator=request.user, is_active=True
+    ).select_related('tenant', 'target_membership', 'target_membership__user', 'target_membership__role').first()
+
+    if not session:
+        return Response({'error': 'No active View As session.'}, status=status.HTTP_404_NOT_FOUND)
+
+    old_mode = session.mode
+    session.mode = mode
+    session.save(update_fields=['mode'])
+
+    target = session.target_membership
+    target_name = target.user.first_name if target.user else target.invite_email
+    details = {'from': old_mode, 'to': mode}
+
+    if request.user.role == 'super_admin':
+        from superadmin.audit import log_action
+        log_action(request, 'view_as_mode_switched', tenant=session.tenant,
+                   target_type='membership', target_name=target_name, details=details)
+    else:
+        from .activity import log_team_activity
+        log_team_activity(request, 'view_as_mode_switched', tenant=session.tenant,
+                          target_type='membership', target_name=target_name, details=details,
+                          viewed_as_membership=target)
+
+    return Response({
+        'session_id': str(session.id),
+        'mode': session.mode,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def view_as_status(request):
+    """
+    Frontend har page load pe yeh check karta hai — banner dikhana hai
+    ya nahi. Reuses the exact same fresh-validity check has_permission()
+    uses internally, so the status shown here can NEVER drift from what
+    permissions are actually being enforced on the very next real request.
+    """
+    from .permissions import _get_active_view_as_session
+    session = _get_active_view_as_session(request.user)
+
+    if not session:
+        return Response({'session': None})
+
+    target = session.target_membership
+    return Response({
+        'session': {
+            'session_id': str(session.id),
+            'tenant_id': str(session.tenant_id),
+            'target_membership_id': str(target.id),
+            'target_name': target.user.first_name if target.user else target.invite_email,
+            'target_role': target.role.name,
+            'mode': session.mode,
+            'started_at': session.started_at.isoformat(),
+        }
+    })

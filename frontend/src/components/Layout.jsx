@@ -1,6 +1,6 @@
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useNavigate, useLocation, NavLink } from "react-router-dom"
-import { authAPI } from "../services/api"
+import { authAPI, teamAPI } from "../services/api"
 import { clearAuth, getUser, getInitials } from "../utils/auth"
 
 // ─── Client nav config ────────────────────────────────────────────────────────
@@ -158,6 +158,128 @@ const NAV_ITEMS = [
   },
 ]
 
+// ─── View As Member — Phase B.5 ────────────────────────────────────────────────
+// Mirrors the Founder's Support Mode banner (pages/admin/BusinessWorkspacePage.jsx)
+// — same colors/copy convention (amber = view-only, red = edit simulation),
+// same "confirm before switching to edit" safety pattern.
+
+function EditSimConfirmModal({ targetName, onConfirm, onCancel, loading }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+        <h3 className="text-base font-semibold text-gray-900">Switch to Edit Simulation?</h3>
+        <p className="mt-2 text-sm text-gray-500">
+          Edit Simulation mein tum <strong className="text-gray-800">{targetName}</strong> ki
+          tarah actual changes save kar sakte ho (unki permissions ke hisaab se). Dhyan se use karo.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onCancel}
+            className="rounded-lg px-4 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={loading}
+            className="rounded-lg bg-red-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-600 transition disabled:opacity-50">
+            {loading ? "Switching…" : "Enter Edit Simulation"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ViewAsBanner({ session, onModeChanged, onExit }) {
+  const [confirmEdit, setConfirmEdit] = useState(false)
+  const [modeLoading, setModeLoading] = useState(false)
+  const [exiting, setExiting] = useState(false)
+
+  if (!session) return null
+  const isEditMode = session.mode === "edit"
+
+  const handleSwitchToEdit = async () => {
+    setModeLoading(true)
+    try {
+      const res = await teamAPI.switchViewAsMode("edit")
+      onModeChanged(res.data.mode)
+    } catch {
+      // Silent — session may have auto-ended server-side; next status check will catch it
+    } finally {
+      setModeLoading(false)
+      setConfirmEdit(false)
+    }
+  }
+
+  const handleSwitchToView = async () => {
+    setModeLoading(true)
+    try {
+      const res = await teamAPI.switchViewAsMode("view")
+      onModeChanged(res.data.mode)
+    } catch {
+      // Silent
+    } finally {
+      setModeLoading(false)
+    }
+  }
+
+  const handleExit = async () => {
+    setExiting(true)
+    try {
+      await teamAPI.endViewAs()
+    } catch {
+      // Endpoint 404s if the session already auto-ended server-side — fine either way
+    } finally {
+      onExit()
+      setExiting(false)
+    }
+  }
+
+  return (
+    <>
+      <div className={`sticky top-0 z-50 ${isEditMode ? "bg-red-500" : "bg-amber-500"}`}>
+        <div className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 flex-shrink-0 rounded-full bg-white animate-pulse" />
+            <span className="text-sm font-semibold text-white">
+              Viewing As: {session.target_name} ({session.target_role})
+            </span>
+          </div>
+
+          <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-medium text-white">
+            {isEditMode ? "✏️ Edit Simulation" : "👁 View Only"}
+          </span>
+
+          <div className="ml-auto flex items-center gap-2">
+            {isEditMode ? (
+              <button onClick={handleSwitchToView} disabled={modeLoading}
+                className="rounded-lg bg-white/20 px-3 py-1 text-xs font-medium text-white hover:bg-white/30 transition disabled:opacity-60">
+                {modeLoading ? "…" : "Switch to View Only"}
+              </button>
+            ) : (
+              <button onClick={() => setConfirmEdit(true)} disabled={modeLoading}
+                className="rounded-lg bg-white/20 px-3 py-1 text-xs font-medium text-white hover:bg-white/30 transition disabled:opacity-60">
+                {modeLoading ? "…" : "Switch to Edit Simulation"}
+              </button>
+            )}
+
+            <button onClick={handleExit} disabled={exiting}
+              className="rounded-lg bg-white px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50 transition disabled:opacity-60">
+              {exiting ? "Exiting…" : "Exit View As ×"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {confirmEdit && (
+        <EditSimConfirmModal
+          targetName={session.target_name}
+          onConfirm={handleSwitchToEdit}
+          onCancel={() => setConfirmEdit(false)}
+          loading={modeLoading}
+        />
+      )}
+    </>
+  )
+}
+
 // ─── Layout ───────────────────────────────────────────────────────────────────
 
 export default function Layout({ children }) {
@@ -165,6 +287,27 @@ export default function Layout({ children }) {
   const location = useLocation()
   const user = getUser()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [viewAsSession, setViewAsSession] = useState(null)
+
+  // Fresh check on every page load (Layout remounts per-page in this app) —
+  // matches the backend's own "never trust stale state" philosophy. A light
+  // poll is added too so a mid-session auto-termination (role changed,
+  // business suspended, etc. — see teams/permissions.py) is reflected
+  // without needing a full page navigation.
+  const refreshViewAsStatus = useCallback(async () => {
+    try {
+      const res = await teamAPI.getViewAsStatus()
+      setViewAsSession(res.data.session)
+    } catch {
+      // Silent — banner just won't show if this fails
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshViewAsStatus()
+    const interval = setInterval(refreshViewAsStatus, 20000)
+    return () => clearInterval(interval)
+  }, [refreshViewAsStatus])
 
   const handleLogout = async () => {
     try {
@@ -183,7 +326,20 @@ export default function Layout({ children }) {
   const pageTitle = currentNav?.label || "BillingMars"
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className={`min-h-screen bg-gray-50 flex ${viewAsSession ? "pt-11" : ""}`}>
+
+      {/* Phase B.5 — View As Member banner. Fixed overlay so it doesn't
+          disturb the existing flex(sidebar+content) layout below — the
+          conditional pt-11 above just makes room for it. */}
+      {viewAsSession && (
+        <div className="fixed inset-x-0 top-0 z-[70]">
+          <ViewAsBanner
+            session={viewAsSession}
+            onModeChanged={(mode) => setViewAsSession((prev) => ({ ...prev, mode }))}
+            onExit={() => setViewAsSession(null)}
+          />
+        </div>
+      )}
 
       {/* Mobile overlay */}
       {drawerOpen && (
@@ -195,7 +351,7 @@ export default function Layout({ children }) {
       )}
 
       {/* ── Sidebar ── */}
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-gray-200 bg-white transition-transform duration-200 md:translate-x-0 ${
+      <aside className={`fixed ${viewAsSession ? "top-11 bottom-0" : "inset-y-0"} left-0 z-40 flex w-60 flex-col border-r border-gray-200 bg-white transition-transform duration-200 md:translate-x-0 ${
         drawerOpen ? "translate-x-0" : "-translate-x-full"
       }`}>
 
@@ -252,7 +408,7 @@ export default function Layout({ children }) {
       <div className="flex-1 md:pl-60">
 
         {/* Topbar */}
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-gray-200 bg-white/90 px-4 backdrop-blur md:px-6">
+        <header className={`sticky ${viewAsSession ? "top-11" : "top-0"} z-20 flex h-14 items-center gap-3 border-b border-gray-200 bg-white/90 px-4 backdrop-blur md:px-6`}>
 
           {/* Mobile hamburger */}
           <button

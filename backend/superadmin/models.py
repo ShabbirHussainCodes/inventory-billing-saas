@@ -53,6 +53,12 @@ class AuditLog(models.Model):
         ('workspace_entered',       'Workspace Entered'),
         ('workspace_exited',        'Workspace Exited'),
         ('mode_switched',           'Mode Switched'),
+        # View As Member events (Phase B.5) — Founder viewing-as a staff
+        # member while already inside a SupportSession. Mirrors the same
+        # three actions teams.ActivityLog already has for the Owner side.
+        ('view_as_started',         'View As Started'),
+        ('view_as_ended',           'View As Ended'),
+        ('view_as_mode_switched',   'View As Mode Switched'),
         # Product events
         ('product_created',         'Product Created'),
         ('product_updated',         'Product Updated'),

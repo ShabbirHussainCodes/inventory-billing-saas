@@ -199,6 +199,12 @@ export const teamAPI = {
     params.append('page_size', pageSize)
     return api.get(`/team/activity/?${params.toString()}`)
   },
+
+  // Phase B.5 — View As Member
+  startViewAs: (membershipId) => api.post(`/team/view-as/${membershipId}/start/`),
+  endViewAs: () => api.post('/team/view-as/end/'),
+  switchViewAsMode: (mode) => api.post('/team/view-as/mode/', { mode }),
+  getViewAsStatus: () => api.get('/team/view-as/status/'),
 }
 
 export const tenantAPI = {
