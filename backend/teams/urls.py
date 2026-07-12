@@ -15,6 +15,7 @@ urlpatterns = [
     path('members/<uuid:membership_id>/reactivate/', views.reactivate_member, name='team-member-reactivate'),
     path('members/<uuid:membership_id>/', views.remove_member, name='team-member-remove'),
     path('members/<uuid:membership_id>/role/', views.change_member_role, name='team-member-role'),
+    path('members/<uuid:membership_id>/make-primary/', views.make_primary_owner, name='team-member-make-primary'),
 
     path('view-as/<uuid:membership_id>/start/', views.start_view_as, name='team-view-as-start'),
     path('view-as/end/', views.end_view_as, name='team-view-as-end'),

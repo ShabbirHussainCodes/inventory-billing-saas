@@ -338,6 +338,7 @@ def _serialize_membership(m):
         'role_id': str(m.role_id),
         'role_name': m.role.name,
         'status': m.status,
+        'is_primary_owner': m.is_primary_owner,
         'invited_by': m.invited_by.email if m.invited_by else None,
         'joined_at': m.joined_at.isoformat() if m.joined_at else None,
         'created_at': m.created_at.isoformat(),
@@ -508,6 +509,67 @@ def change_member_role(request, membership_id):
         target_type='membership', target_name=target.user.email if target.user else target.invite_email,
         details={'from': old_role_name, 'to': new_role.name},
     )
+    return Response(_serialize_membership(target))
+
+
+# ─── PRIMARY OWNER (Phase B.6 Stage 1) ──────────────────────
+#
+# Every tenant has exactly one Primary Owner at all times (DB partial
+# unique index enforces "at most one"; registration + the backfill
+# migration + this endpoint's atomic flip jointly guarantee "never zero").
+# This is a VOLUNTARY, in-business handoff — the current Primary Owner
+# choosing to pass the role to another Owner they already trust. It is
+# deliberately separate from the Founder's future "Break Glass" override
+# (Stage 3), which exists for when this normal path isn't available
+# (Primary Owner lost access, disputes, fraud, etc.).
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def make_primary_owner(request, membership_id):
+    tenant = get_active_tenant(request)
+    if not tenant:
+        return Response({'error': 'No active business context.'}, status=400)
+
+    current_primary = Membership.objects.filter(
+        user=request.user, tenant=tenant, status='active', is_primary_owner=True
+    ).first()
+    if not current_primary:
+        return Response(
+            {'error': 'Only the current Primary Owner can transfer this role.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    target = _get_target_membership(tenant, membership_id)
+    if not target:
+        return Response({'error': 'Member not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if target.pk == current_primary.pk:
+        return Response({'error': 'You are already the Primary Owner.'}, status=400)
+    if target.role.name != 'Owner' or target.status != 'active':
+        return Response(
+            {'error': 'Primary Owner can only be transferred to another active Owner. '
+                      'Change their role to Owner first if needed.'},
+            status=400
+        )
+
+    from django.db import transaction
+    with transaction.atomic():
+        # Order matters: old primary OFF first, then new primary ON — this
+        # way the tenant briefly has ZERO primaries (allowed) but NEVER two
+        # at once (blocked by the DB constraint), regardless of how the DB
+        # checks the constraint internally.
+        current_primary.is_primary_owner = False
+        current_primary.save(update_fields=['is_primary_owner'])
+        target.is_primary_owner = True
+        target.save(update_fields=['is_primary_owner'])
+
+    from_name = request.user.first_name or request.user.email
+    to_name = target.user.first_name if target.user else target.invite_email
+    ActivityLog.objects.create(
+        actor=request.user, tenant=tenant, action='primary_owner_transferred',
+        target_type='membership', target_name=to_name,
+        details={'from': from_name, 'to': to_name},
+    )
+
     return Response(_serialize_membership(target))
 
 

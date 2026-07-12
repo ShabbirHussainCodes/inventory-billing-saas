@@ -197,6 +197,35 @@ function RemoveConfirm({ member, onConfirm, onCancel, loading }) {
   )
 }
 
+// ─── Make Primary Owner Confirm (Phase B.6 Stage 1) ────────────────────────
+
+function MakePrimaryConfirm({ member, onConfirm, onCancel, loading }) {
+  if (!member) return null
+  const name = member.first_name ? `${member.first_name} ${member.last_name}`.trim() : member.email
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+        <p className="text-base font-semibold text-gray-900">Make {name} the Primary Owner?</p>
+        <p className="mt-1.5 text-sm text-gray-500">
+          You'll remain a full Owner, but <strong className="text-gray-800">{name}</strong> will
+          become the one Primary Owner — the only person who can suspend, remove, or demote
+          another Owner. You can hand it back to yourself later the same way.
+        </p>
+        <div className="mt-5 flex justify-end gap-3">
+          <button onClick={onCancel} disabled={loading}
+            className="rounded-lg border border-gray-200 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={loading}
+            className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+            {loading ? "Transferring…" : "Make Primary Owner"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Toast({ message }) {
   if (!message) return null
   return (
@@ -234,8 +263,14 @@ export default function TeamPage() {
   const [inviteModal, setInviteModal] = useState(false)
   const [roleModalMember, setRoleModalMember] = useState(null)
   const [removeTarget, setRemoveTarget] = useState(null)
+  const [makePrimaryTarget, setMakePrimaryTarget] = useState(null)
   const [busyId, setBusyId] = useState(null)
   const [toast, setToast] = useState("")
+
+  // Phase B.6 Stage 1 — am I the current Primary Owner? Only they see the
+  // "Make Primary Owner" action on other Owners' rows.
+  const myMembership = members.find(m => m.email === currentUserEmail)
+  const isPrimaryOwner = myMembership?.is_primary_owner === true
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(""), 3000) }
 
@@ -344,6 +379,21 @@ export default function TeamPage() {
     }
   }
 
+  // Phase B.6 Stage 1 — voluntary Primary Owner handoff
+  const handleMakePrimary = async () => {
+    setBusyId(makePrimaryTarget.id)
+    try {
+      await teamAPI.makePrimaryOwner(makePrimaryTarget.id)
+      showToast(`${makePrimaryTarget.first_name || makePrimaryTarget.email} is now the Primary Owner.`)
+      setMakePrimaryTarget(null)
+      fetchAll()
+    } catch (e) {
+      showToast(e?.response?.data?.error || "Failed to transfer Primary Owner.")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   if (!loading && accessDenied) {
     return (
       <Layout>
@@ -404,8 +454,13 @@ export default function TeamPage() {
                 {(m.first_name?.[0] || m.email[0] || "?").toUpperCase()}
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className="text-sm font-medium text-gray-900 truncate flex items-center gap-1.5">
                   {m.first_name ? `${m.first_name} ${m.last_name}`.trim() : m.email}
+                  {m.is_primary_owner && (
+                    <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-600">
+                      Primary Owner
+                    </span>
+                  )}
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5 truncate">
                   {m.email} · {m.role_name}
@@ -438,6 +493,12 @@ export default function TeamPage() {
                       {busyId === m.id ? "…" : "View As"}
                     </button>
                   )}
+                  {isPrimaryOwner && m.role_name === 'Owner' && m.status === 'active' && !m.is_primary_owner && (
+                    <button onClick={() => setMakePrimaryTarget(m)} disabled={busyId === m.id}
+                      className="rounded-lg border border-blue-100 px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 transition disabled:opacity-50">
+                      Make Primary
+                    </button>
+                  )}
                   <button onClick={() => setRemoveTarget(m)} disabled={busyId === m.id}
                     className="rounded-lg border border-red-100 px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 transition disabled:opacity-50">
                     Remove
@@ -458,6 +519,8 @@ export default function TeamPage() {
       )}
       <RemoveConfirm member={removeTarget} onConfirm={handleRemove} onCancel={() => setRemoveTarget(null)}
         loading={busyId === removeTarget?.id} />
+      <MakePrimaryConfirm member={makePrimaryTarget} onConfirm={handleMakePrimary} onCancel={() => setMakePrimaryTarget(null)}
+        loading={busyId === makePrimaryTarget?.id} />
       <Toast message={toast} />
     </Layout>
   )

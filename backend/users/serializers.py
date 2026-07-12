@@ -88,6 +88,10 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             status='active',
             invite_email=user.email,
             joined_at=timezone.now(),
+            # Phase B.6 Stage 1 — the founding Owner of a brand-new business
+            # is always its Primary Owner from day one. No ambiguity here
+            # since this is the very first Membership row for this tenant.
+            is_primary_owner=True,
         )
 
         return user

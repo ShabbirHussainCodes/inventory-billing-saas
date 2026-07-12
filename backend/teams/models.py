@@ -182,6 +182,20 @@ class Membership(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Phase B.6 Stage 1 — "Primary Owner" concept. Every tenant should have
+    # EXACTLY one active Primary Owner at all times. The DB constraint below
+    # only enforces "at most one" (Postgres partial unique index) — it
+    # CANNOT enforce "at least one" across rows without a trigger, which we
+    # deliberately avoided for now. "Never zero" is instead guaranteed
+    # procedurally: registration sets it on the founding Owner, the backfill
+    # migration sets it on every existing tenant's original Owner, the
+    # voluntary handoff endpoint flips it atomically (old off + new on in
+    # one transaction), and Stage 2 will add guards blocking removal/
+    # demotion of the sole Primary Owner. Ordinary (non-Primary) Owners are
+    # otherwise fully equal — this flag only matters for owner-management
+    # authority, not day-to-day permissions.
+    is_primary_owner = models.BooleanField(default=False)
+
     class Meta:
         ordering = ['-created_at']
         indexes = [
@@ -194,7 +208,15 @@ class Membership(models.Model):
             # (NULL user ke liye yeh constraint apply nahi hota — Postgres
             # multiple NULLs ko unique nahi maanta, so pending invites
             # (user=None) is se restrict nahi hote)
-            models.UniqueConstraint(fields=['user', 'tenant'], name='unique_user_tenant_membership')
+            models.UniqueConstraint(fields=['user', 'tenant'], name='unique_user_tenant_membership'),
+            # At most one active Primary Owner per tenant (partial index —
+            # only rows where is_primary_owner=True count, so this never
+            # blocks the many is_primary_owner=False rows from coexisting).
+            models.UniqueConstraint(
+                fields=['tenant'],
+                condition=models.Q(is_primary_owner=True),
+                name='unique_active_primary_owner_per_tenant'
+            ),
         ]
 
     def __str__(self):
@@ -328,6 +350,8 @@ class ActivityLog(models.Model):
         ('role_created',       'Role Created'),
         ('role_updated',       'Role Updated'),
         ('role_deleted',       'Role Deleted'),
+        # Phase B.6 Stage 1 — Primary Owner
+        ('primary_owner_transferred', 'Primary Owner Transferred'),
         # View-as
         ('view_as_started',    'View As Started'),
         ('view_as_ended',      'View As Ended'),

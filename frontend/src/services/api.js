@@ -205,6 +205,9 @@ export const teamAPI = {
   endViewAs: () => api.post('/team/view-as/end/'),
   switchViewAsMode: (mode) => api.post('/team/view-as/mode/', { mode }),
   getViewAsStatus: () => api.get('/team/view-as/status/'),
+
+  // Phase B.6 Stage 1 — Primary Owner
+  makePrimaryOwner: (membershipId) => api.patch(`/team/members/${membershipId}/make-primary/`),
 }
 
 export const tenantAPI = {
