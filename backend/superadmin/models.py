@@ -59,6 +59,14 @@ class AuditLog(models.Model):
         ('view_as_started',         'View As Started'),
         ('view_as_ended',           'View As Ended'),
         ('view_as_mode_switched',   'View As Mode Switched'),
+        # Team management events (Phase B.6 Stage B) — Founder performing
+        # routine team actions with Owner-equivalent operational parity.
+        # Mirrors teams.ActivityLog's action set for the same events.
+        ('member_invited',         'Member Invited'),
+        ('member_suspended',       'Member Suspended'),
+        ('member_reactivated',     'Member Reactivated'),
+        ('member_removed',         'Member Removed'),
+        ('role_changed',           'Role Changed'),
         # Product events
         ('product_created',         'Product Created'),
         ('product_updated',         'Product Updated'),

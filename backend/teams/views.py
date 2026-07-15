@@ -18,6 +18,30 @@ from superadmin.utils import get_active_tenant
 INVITE_EXPIRY_DAYS = 7
 
 
+def _block_founder_owner_action(request):
+    """
+    Phase B.6 Stage B — Founder now has genuine Owner-equivalent
+    operational parity for ROUTINE team actions (see has_permission()'s
+    Founder branch). But anything that touches Owner-role membership
+    itself — inviting a new Owner, promoting someone to Owner, or
+    suspending/reactivating/removing an existing Owner — is deliberately
+    deferred to Stage C, which will add the mandatory reason +
+    identity-verification-notes friction the agreed philosophy requires
+    for sensitive ownership actions. Until Stage C ships, this is a hard
+    block for Founder specifically, even though has_permission() alone
+    would now allow it.
+
+    Returns a 403 Response if blocked, or None if the caller may proceed.
+    """
+    if request.user.role == 'super_admin':
+        return Response(
+            {'error': 'Owner-level actions require additional verification '
+                      'and are not available here yet — coming in a future update.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    return None
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def invite_member(request):
@@ -50,6 +74,11 @@ def invite_member(request):
     ).first()
     if not role:
         return Response({'error': 'Invalid role.'}, status=400)
+
+    if role.name == 'Owner':
+        blocked = _block_founder_owner_action(request)
+        if blocked:
+            return blocked
 
     # Founder (super_admin) ko kabhi invite nahi kiya ja sakta — Membership
     # model ka save() guard bhi yeh enforce karta hai, par yahan upfront
@@ -100,6 +129,10 @@ def invite_member(request):
         target_name=email,
         details={'role': role.name},
     )
+    if request.user.role == 'super_admin':
+        from superadmin.audit import log_action
+        log_action(request, 'member_invited', tenant=tenant,
+                   target_type='membership', target_name=email, details={'role': role.name})
 
     return Response({
         'message': 'Invite created.',
@@ -398,16 +431,25 @@ def suspend_member(request, membership_id):
         return Response({'error': 'You cannot suspend yourself.'}, status=400)
     if target.status != 'active':
         return Response({'error': f'Cannot suspend a member with status "{target.status}".'}, status=400)
-    if target.role.name == 'Owner' and _active_owner_count(tenant, exclude_pk=target.pk) == 0:
-        return Response({'error': 'Cannot suspend the last active Owner of this business.'}, status=400)
+    if target.role.name == 'Owner':
+        blocked = _block_founder_owner_action(request)
+        if blocked:
+            return blocked
+        if _active_owner_count(tenant, exclude_pk=target.pk) == 0:
+            return Response({'error': 'Cannot suspend the last active Owner of this business.'}, status=400)
 
     target.status = 'suspended'
     target.save()
 
+    target_name = target.user.email if target.user else target.invite_email
     ActivityLog.objects.create(
         actor=request.user, tenant=tenant, action='member_suspended',
-        target_type='membership', target_name=target.user.email if target.user else target.invite_email,
+        target_type='membership', target_name=target_name,
     )
+    if request.user.role == 'super_admin':
+        from superadmin.audit import log_action
+        log_action(request, 'member_suspended', tenant=tenant,
+                   target_type='membership', target_name=target_name)
     return Response(_serialize_membership(target))
 
 
@@ -425,14 +467,23 @@ def reactivate_member(request, membership_id):
         return Response({'error': 'Member not found.'}, status=status.HTTP_404_NOT_FOUND)
     if target.status != 'suspended':
         return Response({'error': f'Cannot reactivate a member with status "{target.status}".'}, status=400)
+    if target.role.name == 'Owner':
+        blocked = _block_founder_owner_action(request)
+        if blocked:
+            return blocked
 
     target.status = 'active'
     target.save()
 
+    target_name = target.user.email if target.user else target.invite_email
     ActivityLog.objects.create(
         actor=request.user, tenant=tenant, action='member_reactivated',
-        target_type='membership', target_name=target.user.email if target.user else target.invite_email,
+        target_type='membership', target_name=target_name,
     )
+    if request.user.role == 'super_admin':
+        from superadmin.audit import log_action
+        log_action(request, 'member_reactivated', tenant=tenant,
+                   target_type='membership', target_name=target_name)
     return Response(_serialize_membership(target))
 
 
@@ -455,8 +506,12 @@ def remove_member(request, membership_id):
         return Response({'error': 'You cannot remove yourself.'}, status=400)
     if target.status == 'removed':
         return Response({'error': 'This member has already been removed.'}, status=400)
-    if target.role.name == 'Owner' and target.status == 'active' and _active_owner_count(tenant, exclude_pk=target.pk) == 0:
-        return Response({'error': 'Cannot remove the last active Owner of this business.'}, status=400)
+    if target.role.name == 'Owner':
+        blocked = _block_founder_owner_action(request)
+        if blocked:
+            return blocked
+        if target.status == 'active' and _active_owner_count(tenant, exclude_pk=target.pk) == 0:
+            return Response({'error': 'Cannot remove the last active Owner of this business.'}, status=400)
 
     target_name = target.user.email if target.user else target.invite_email
     target.status = 'removed'
@@ -466,6 +521,10 @@ def remove_member(request, membership_id):
         actor=request.user, tenant=tenant, action='member_removed',
         target_type='membership', target_name=target_name,
     )
+    if request.user.role == 'super_admin':
+        from superadmin.audit import log_action
+        log_action(request, 'member_removed', tenant=tenant,
+                   target_type='membership', target_name=target_name)
     return Response({'message': 'Member removed.'})
 
 
@@ -495,6 +554,11 @@ def change_member_role(request, membership_id):
     if not new_role:
         return Response({'error': 'Invalid role.'}, status=400)
 
+    if target.role.name == 'Owner' or new_role.name == 'Owner':
+        blocked = _block_founder_owner_action(request)
+        if blocked:
+            return blocked
+
     if (target.role.name == 'Owner' and new_role.name != 'Owner'
             and target.status == 'active'
             and _active_owner_count(tenant, exclude_pk=target.pk) == 0):
@@ -504,11 +568,17 @@ def change_member_role(request, membership_id):
     target.role = new_role
     target.save()
 
+    target_name = target.user.email if target.user else target.invite_email
     ActivityLog.objects.create(
         actor=request.user, tenant=tenant, action='role_changed',
-        target_type='membership', target_name=target.user.email if target.user else target.invite_email,
+        target_type='membership', target_name=target_name,
         details={'from': old_role_name, 'to': new_role.name},
     )
+    if request.user.role == 'super_admin':
+        from superadmin.audit import log_action
+        log_action(request, 'role_changed', tenant=tenant,
+                   target_type='membership', target_name=target_name,
+                   details={'from': old_role_name, 'to': new_role.name})
     return Response(_serialize_membership(target))
 
 

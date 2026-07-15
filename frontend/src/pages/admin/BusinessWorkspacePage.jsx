@@ -72,7 +72,7 @@ function WorkspaceContent({ activeSection, isEditMode, tenantName }) {
   }
 
   if (activeSection === "team") {
-    return <WorkspaceTeam />
+    return <WorkspaceTeam isEditMode={isEditMode} />
   }
 
   // Default — Dashboard placeholder

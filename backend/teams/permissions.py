@@ -122,15 +122,41 @@ def has_permission(request, codename):
             .exists()
         )
 
-    # Founder — Role/Permission system bypass. Reads (GET/HEAD) allowed
-    # hamesha (agar active support session hai — get_active_tenant() ne
-    # already tenant resolve kiya hoga jahan se yeh call ho rahi hai).
-    # Writes ke liye is_edit_mode() check hota hai.
+    # Founder — Phase B.6 Stage B. Reads (GET/HEAD) allowed hamesha (agar
+    # active support session hai). Writes ke liye pehle is_edit_mode()
+    # check hota hai — agar View Only hai, turant False.
+    #
+    # Agar Edit Mode hai: pehle (Phase A-B.5) yahan blanket `return True`
+    # tha kisi bhi codename ke liye — matlab Founder Edit Mode mein
+    # technically team.* writes bhi kar sakta tha, koi granular check
+    # nahi tha. Philosophy discussion ke baad ab yeh Founder ko genuinely
+    # "Business Owner jaisi operational parity" deta hai — tenant ke
+    # ACTUAL Owner role ke permission-set ke against check hota hai, blanket
+    # bypass nahi. Isse Owner ki permissions kabhi badlein, Founder ka
+    # effective access bhi automatically saath badal jaata hai (View As
+    # Member jaisa hi pattern, bas target hamesha "Owner role" fixed hai).
+    #
+    # NOTE: Yeh sirf Permission-catalog-gated codenames ke liye hai.
+    # Owner-role-touching actions (invite new Owner, suspend/remove/
+    # promote-to-Owner) ka structural guard alag se teams/views.py mein
+    # hai (_block_founder_owner_action) — woh Stage C tak Founder ke
+    # liye hard-blocked rahega, chahe yahan se True aaye.
     if user.role == 'super_admin':
         if request.method in ('GET', 'HEAD'):
             return True
-        from superadmin.utils import is_edit_mode
-        return is_edit_mode(request)
+        from superadmin.utils import is_edit_mode, get_active_tenant
+        if not is_edit_mode(request):
+            return False
+
+        tenant = get_active_tenant(request)
+        if not tenant:
+            return False
+
+        from teams.models import Role
+        owner_role = Role.objects.filter(name='Owner', tenant__isnull=True).first()
+        if not owner_role:
+            return False
+        return owner_role.role_permissions.filter(permission__codename=codename).exists()
 
     # Normal business user / staff — active Membership + Role check
     from superadmin.utils import get_active_tenant
