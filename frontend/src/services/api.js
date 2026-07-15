@@ -186,10 +186,14 @@ export const teamAPI = {
   inviteMember: (data) => api.post('/team/invite/', data),
   getInviteDetail: (token) => api.get(`/team/invite/${token}/`),
   acceptInvite: (token, data) => api.post(`/team/invite/${token}/accept/`, data),
-  suspendMember: (id) => api.patch(`/team/members/${id}/suspend/`),
-  reactivateMember: (id) => api.patch(`/team/members/${id}/reactivate/`),
-  removeMember: (id) => api.delete(`/team/members/${id}/`),
-  changeMemberRole: (id, roleId) => api.patch(`/team/members/${id}/role/`, { role_id: roleId }),
+  // `extra` — optional { reason, identity_verification_notes }, only required
+  // when a Founder is touching an Owner-role membership (Stage C). Real
+  // Owner actors and non-Owner targets can omit it; the backend only
+  // enforces the fields when they're actually needed.
+  suspendMember: (id, extra = {}) => api.patch(`/team/members/${id}/suspend/`, extra),
+  reactivateMember: (id, extra = {}) => api.patch(`/team/members/${id}/reactivate/`, extra),
+  removeMember: (id, extra = {}) => api.delete(`/team/members/${id}/`, { data: extra }),
+  changeMemberRole: (id, roleId, extra = {}) => api.patch(`/team/members/${id}/role/`, { role_id: roleId, ...extra }),
 
   getActivityLog: ({ action = null, days = null, page = 1, pageSize = 50 } = {}) => {
     const params = new URLSearchParams()
@@ -207,7 +211,7 @@ export const teamAPI = {
   getViewAsStatus: () => api.get('/team/view-as/status/'),
 
   // Phase B.6 Stage 1 — Primary Owner
-  makePrimaryOwner: (membershipId) => api.patch(`/team/members/${membershipId}/make-primary/`),
+  makePrimaryOwner: (membershipId, extra = {}) => api.patch(`/team/members/${membershipId}/make-primary/`, extra),
 }
 
 export const tenantAPI = {

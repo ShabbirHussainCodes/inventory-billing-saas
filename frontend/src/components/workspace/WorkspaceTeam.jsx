@@ -36,26 +36,72 @@ function Toast({ message }) {
   )
 }
 
-// ─── Invite Modal (Stage B — non-Owner roles only) ────────────────────────────
-// Owner role is deliberately never offered here — inviting a new Owner is a
-// sensitive ownership action, deferred to Stage C (mandatory reason +
-// identity-verification-notes), not a routine one.
+// This whole component only ever renders inside the Founder's Support
+// Workspace (see BusinessWorkspacePage.jsx) — a real business Owner never
+// sees this screen, they have their own separate Team page. So every action
+// taken here is, structurally, always a Founder action. That's why any
+// action that touches an Owner-role membership (inviting one, suspending
+// one, removing one, changing their role, handing off Primary Owner) always
+// collects `reason` + `identity_verification_notes` here — this is Stage C:
+// Founder gets full operational parity, but ownership-sensitive actions
+// carry a mandatory accountability trail (dual-logged to this business's own
+// Activity Log AND the Founder's platform Audit Log).
+
+// ─── Ownership fields (shared by every Owner-touching modal) ─────────────
+
+function OwnershipFields({ reason, setReason, notes, setNotes, err }) {
+  return (
+    <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-3 space-y-2">
+      <p className="text-[11px] font-medium text-amber-700">
+        Ownership action — reason and identity verification are required and will be logged.
+      </p>
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Reason *</label>
+        <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2}
+          placeholder="Why is this being done on the customer's behalf?"
+          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+      </div>
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Identity verification notes *</label>
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+          placeholder="How was the requester's identity confirmed? (call, OTP, signed request, etc.)"
+          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+      </div>
+      {err && <p className="text-xs text-red-500">{err}</p>}
+    </div>
+  )
+}
+
+// ─── Invite Modal — Owner is offered, but requires ownership fields ──────
 
 function InviteModal({ roles, onClose, onInvited }) {
-  const nonOwnerRoles = roles.filter(r => r.name !== 'Owner')
   const [email, setEmail] = useState("")
-  const [roleId, setRoleId] = useState(nonOwnerRoles[0]?.id || "")
+  const [roleId, setRoleId] = useState(roles[0]?.id || "")
+  const [reason, setReason] = useState("")
+  const [notes, setNotes] = useState("")
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState("")
   const [inviteLink, setInviteLink] = useState(null)
 
+  const selectedRole = roles.find(r => r.id === roleId)
+  const isOwnerRole = selectedRole?.name === 'Owner'
+
   const submit = async () => {
     if (!email.trim()) { setErr("Email is required."); return }
     if (!roleId) { setErr("Please select a role."); return }
+    if (isOwnerRole && (!reason.trim() || !notes.trim())) {
+      setErr("Reason and identity verification notes are required to invite an Owner.")
+      return
+    }
     setSaving(true)
     setErr("")
     try {
-      const res = await teamAPI.inviteMember({ email: email.trim(), role_id: roleId })
+      const payload = { email: email.trim(), role_id: roleId }
+      if (isOwnerRole) {
+        payload.reason = reason.trim()
+        payload.identity_verification_notes = notes.trim()
+      }
+      const res = await teamAPI.inviteMember(payload)
       setInviteLink(`${window.location.origin}/accept-invite/${res.data.invite_token}`)
       onInvited()
     } catch (e) {
@@ -107,12 +153,12 @@ function InviteModal({ roles, onClose, onInvited }) {
                 <label className="block text-xs text-gray-500 mb-1">Role *</label>
                 <select value={roleId} onChange={e => { setRoleId(e.target.value); setErr("") }}
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                  {nonOwnerRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
-                <p className="mt-1 text-[11px] text-gray-400">
-                  Owner isn't offered here — inviting a new Owner needs the Stage C ownership workflow.
-                </p>
               </div>
+              {isOwnerRole && (
+                <OwnershipFields reason={reason} setReason={setReason} notes={notes} setNotes={setNotes} err="" />
+              )}
               {err && <p className="text-xs text-red-500">{err}</p>}
             </div>
             <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
@@ -132,12 +178,27 @@ function InviteModal({ roles, onClose, onInvited }) {
   )
 }
 
-// ─── Change Role Modal (non-Owner roles only) ─────────────────────────────────
+// ─── Change Role Modal — Owner offered both ways, ownership fields shown
+//     whenever Owner is involved on either side of the change ────────────
 
 function ChangeRoleModal({ member, roles, onClose, onSave, saving }) {
-  const nonOwnerRoles = roles.filter(r => r.name !== 'Owner')
   const [roleId, setRoleId] = useState(member.role_id)
+  const [reason, setReason] = useState("")
+  const [notes, setNotes] = useState("")
   const [err, setErr] = useState("")
+
+  const selectedRole = roles.find(r => r.id === roleId)
+  const touchesOwner = member.role_name === 'Owner' || selectedRole?.name === 'Owner'
+
+  const submit = () => {
+    if (!roleId) { setErr("Please select a role."); return }
+    if (touchesOwner && (!reason.trim() || !notes.trim())) {
+      setErr("Reason and identity verification notes are required for this role change.")
+      return
+    }
+    const extra = touchesOwner ? { reason: reason.trim(), identity_verification_notes: notes.trim() } : {}
+    onSave(roleId, extra)
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -152,11 +213,11 @@ function ChangeRoleModal({ member, roles, onClose, onSave, saving }) {
           </p>
           <select value={roleId} onChange={e => { setRoleId(e.target.value); setErr("") }}
             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-            {nonOwnerRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
-          <p className="text-[11px] text-gray-400">
-            Promoting to Owner isn't offered here — that's a Stage C ownership action.
-          </p>
+          {touchesOwner && (
+            <OwnershipFields reason={reason} setReason={setReason} notes={notes} setNotes={setNotes} err="" />
+          )}
           {err && <p className="text-xs text-red-500">{err}</p>}
         </div>
         <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
@@ -164,7 +225,7 @@ function ChangeRoleModal({ member, roles, onClose, onSave, saving }) {
             className="rounded-lg border border-gray-200 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
             Cancel
           </button>
-          <button onClick={() => (roleId ? onSave(roleId) : setErr("Please select a role."))} disabled={saving}
+          <button onClick={submit} disabled={saving}
             className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
             {saving ? "Saving…" : "Save"}
           </button>
@@ -174,7 +235,77 @@ function ChangeRoleModal({ member, roles, onClose, onSave, saving }) {
   )
 }
 
-// ─── Remove Confirm ─────────────────────────────────────────────────────────
+// ─── Generic confirm modal for suspend / reactivate / remove / make-primary
+//     on an Owner — always collects ownership fields, since (see note at
+//     top of file) every actor in this component is the Founder. ─────────
+
+const OWNERSHIP_ACTION_COPY = {
+  suspend: {
+    title: "Suspend this Owner?",
+    body: m => `"${m.first_name ? `${m.first_name} ${m.last_name}` : m.email}" will lose access immediately. This is being done on the customer's behalf.`,
+    confirmLabel: "Suspend",
+    confirmClass: "bg-orange-500 hover:bg-orange-600",
+  },
+  reactivate: {
+    title: "Reactivate this Owner?",
+    body: m => `"${m.first_name ? `${m.first_name} ${m.last_name}` : m.email}" will regain access immediately.`,
+    confirmLabel: "Reactivate",
+    confirmClass: "bg-green-600 hover:bg-green-700",
+  },
+  remove: {
+    title: "Remove this Owner?",
+    body: m => `"${m.first_name ? `${m.first_name} ${m.last_name}` : m.email}" will permanently lose access to this business.`,
+    confirmLabel: "Remove",
+    confirmClass: "bg-red-500 hover:bg-red-600",
+  },
+  'make-primary': {
+    title: "Transfer Primary Owner?",
+    body: m => `"${m.first_name ? `${m.first_name} ${m.last_name}` : m.email}" will become the sole Primary Owner of this business. The current Primary Owner loses that status.`,
+    confirmLabel: "Transfer",
+    confirmClass: "bg-blue-600 hover:bg-blue-700",
+  },
+}
+
+function OwnershipActionModal({ action, member, onConfirm, onCancel, loading }) {
+  const [reason, setReason] = useState("")
+  const [notes, setNotes] = useState("")
+  const [err, setErr] = useState("")
+
+  if (!action || !member) return null
+  const copy = OWNERSHIP_ACTION_COPY[action]
+
+  const submit = () => {
+    if (!reason.trim() || !notes.trim()) {
+      setErr("Reason and identity verification notes are required.")
+      return
+    }
+    onConfirm(reason.trim(), notes.trim())
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+        <p className="text-base font-semibold text-gray-900">{copy.title}</p>
+        <p className="mt-1.5 text-sm text-gray-500">{copy.body(member)}</p>
+        <div className="mt-4">
+          <OwnershipFields reason={reason} setReason={setReason} notes={notes} setNotes={setNotes} err={err} />
+        </div>
+        <div className="mt-5 flex justify-end gap-3">
+          <button onClick={onCancel} disabled={loading}
+            className="rounded-lg border border-gray-200 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={submit} disabled={loading}
+            className={`rounded-lg px-4 py-1.5 text-sm font-medium text-white transition disabled:opacity-50 ${copy.confirmClass}`}>
+            {loading ? "Working…" : copy.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Remove Confirm (non-Owner — no ownership fields needed) ─────────────
 
 function RemoveConfirm({ member, onConfirm, onCancel, loading }) {
   if (!member) return null
@@ -213,14 +344,16 @@ function TeamSkeleton() {
 
 // ─── Main WorkspaceTeam ────────────────────────────────────────────────────────
 //
-// Stage A gave Founder read-only visibility. Stage B adds real action
-// buttons for ROUTINE team actions — invite, change role, suspend,
-// reactivate, remove — gated behind Edit Mode like the rest of the
-// workspace. Owner-role members are deliberately excluded from every
-// action here (no buttons shown on their row, no "Owner" option in any
-// role dropdown) — the backend hard-blocks those paths too
-// (_block_founder_owner_action), so this UI restriction is belt-and-braces,
-// not the only line of defense. Owner-related actions are Stage C's job.
+// Stage A gave Founder read-only visibility. Stage B added action buttons for
+// ROUTINE team actions on non-Owner members. Stage C (this version) extends
+// full operational parity to Owner-role members too — invite an Owner,
+// change an Owner's role (either direction), suspend/reactivate/remove an
+// Owner, and transfer Primary Owner — all gated behind Edit Mode AND a
+// mandatory reason + identity-verification-notes pair that gets dual-logged
+// to this business's own Activity Log and the Founder's platform Audit Log.
+// The backend (_founder_ownership_fields in teams/views.py) enforces this
+// server-side regardless of what the UI does — this UI is the honest path,
+// not the only line of defense.
 
 export default function WorkspaceTeam({ isEditMode }) {
   const [members, setMembers] = useState([])
@@ -232,6 +365,7 @@ export default function WorkspaceTeam({ isEditMode }) {
   const [inviteModal, setInviteModal] = useState(false)
   const [roleModalMember, setRoleModalMember] = useState(null)
   const [removeTarget, setRemoveTarget] = useState(null)
+  const [ownershipAction, setOwnershipAction] = useState(null) // { type, member }
   const [busyId, setBusyId] = useState(null)
   const [toast, setToast] = useState("")
 
@@ -258,6 +392,7 @@ export default function WorkspaceTeam({ isEditMode }) {
 
   useEffect(() => { fetchAll() }, [])
 
+  // ── Non-Owner routine actions (Stage B, unchanged) ──
   const handleSuspend = async (member) => {
     setBusyId(member.id)
     try {
@@ -298,15 +433,44 @@ export default function WorkspaceTeam({ isEditMode }) {
     }
   }
 
-  const handleChangeRole = async (roleId) => {
+  const handleChangeRole = async (roleId, extra = {}) => {
     setBusyId(roleModalMember.id)
     try {
-      await teamAPI.changeMemberRole(roleModalMember.id, roleId)
+      await teamAPI.changeMemberRole(roleModalMember.id, roleId, extra)
       showToast("Role updated.")
       setRoleModalMember(null)
       fetchAll()
     } catch (e) {
       showToast(e?.response?.data?.error || "Failed to change role.")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  // ── Owner-touching actions (Stage C) — always go through
+  //    OwnershipActionModal, which always supplies reason + notes ──
+  const handleOwnershipConfirm = async (reason, notes) => {
+    const { type, member } = ownershipAction
+    const extra = { reason, identity_verification_notes: notes }
+    setBusyId(member.id)
+    try {
+      if (type === 'suspend') {
+        await teamAPI.suspendMember(member.id, extra)
+        showToast("Owner suspended.")
+      } else if (type === 'reactivate') {
+        await teamAPI.reactivateMember(member.id, extra)
+        showToast("Owner reactivated.")
+      } else if (type === 'remove') {
+        await teamAPI.removeMember(member.id, extra)
+        showToast("Owner removed.")
+      } else if (type === 'make-primary') {
+        await teamAPI.makePrimaryOwner(member.id, extra)
+        showToast("Primary Owner transferred.")
+      }
+      setOwnershipAction(null)
+      fetchAll()
+    } catch (e) {
+      showToast(e?.response?.data?.error || "Action failed.")
     } finally {
       setBusyId(null)
     }
@@ -336,7 +500,7 @@ export default function WorkspaceTeam({ isEditMode }) {
           <h2 className="text-base font-semibold text-gray-900 mb-1">Team</h2>
           <p className="text-xs text-gray-400">
             {isEditMode
-              ? "Edit Mode — routine actions available on the customer's behalf. Owner-related actions aren't here yet (Stage C)."
+              ? "Edit Mode — routine actions available on the customer's behalf. Owner-related actions require a reason and identity verification."
               : "Read-only — switch to Edit Mode to act on the customer's behalf."}
           </p>
         </div>
@@ -366,6 +530,7 @@ export default function WorkspaceTeam({ isEditMode }) {
         <div className="rounded-2xl border border-gray-200 bg-white divide-y divide-gray-100 overflow-hidden">
           {members.map(m => {
             const isOwner = m.role_name === 'Owner'
+            const busy = busyId === m.id
             return (
               <div key={m.id} className="flex items-center gap-3 px-5 py-3">
                 <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-600">
@@ -385,32 +550,41 @@ export default function WorkspaceTeam({ isEditMode }) {
                   </p>
                 </div>
                 <StatusBadge status={m.status} />
-                {isEditMode && !isOwner && m.status !== 'removed' && (
+                {isEditMode && m.status !== 'removed' && (
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <button onClick={() => setRoleModalMember(m)} disabled={busyId === m.id}
+                    <button onClick={() => setRoleModalMember(m)} disabled={busy}
                       className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 transition disabled:opacity-50">
                       Change Role
                     </button>
                     {m.status === 'active' && (
-                      <button onClick={() => handleSuspend(m)} disabled={busyId === m.id}
+                      <button
+                        onClick={() => isOwner ? setOwnershipAction({ type: 'suspend', member: m }) : handleSuspend(m)}
+                        disabled={busy}
                         className="rounded-lg border border-orange-100 px-2.5 py-1 text-xs text-orange-600 hover:bg-orange-50 transition disabled:opacity-50">
                         Suspend
                       </button>
                     )}
                     {m.status === 'suspended' && (
-                      <button onClick={() => handleReactivate(m)} disabled={busyId === m.id}
+                      <button
+                        onClick={() => isOwner ? setOwnershipAction({ type: 'reactivate', member: m }) : handleReactivate(m)}
+                        disabled={busy}
                         className="rounded-lg border border-green-100 px-2.5 py-1 text-xs text-green-600 hover:bg-green-50 transition disabled:opacity-50">
                         Reactivate
                       </button>
                     )}
-                    <button onClick={() => setRemoveTarget(m)} disabled={busyId === m.id}
+                    {isOwner && m.status === 'active' && !m.is_primary_owner && (
+                      <button onClick={() => setOwnershipAction({ type: 'make-primary', member: m })} disabled={busy}
+                        className="rounded-lg border border-blue-100 px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 transition disabled:opacity-50">
+                        Make Primary
+                      </button>
+                    )}
+                    <button
+                      onClick={() => isOwner ? setOwnershipAction({ type: 'remove', member: m }) : setRemoveTarget(m)}
+                      disabled={busy}
                       className="rounded-lg border border-red-100 px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 transition disabled:opacity-50">
                       Remove
                     </button>
                   </div>
-                )}
-                {isOwner && (
-                  <span className="flex-shrink-0 text-xs text-gray-400 px-1">Ownership actions — Stage C</span>
                 )}
               </div>
             )
@@ -451,6 +625,11 @@ export default function WorkspaceTeam({ isEditMode }) {
                     {new Date(a.created_at).toLocaleString()}
                   </p>
                 </div>
+                {a.details?.founder_ownership_action && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Ownership action · {a.details.reason}
+                  </p>
+                )}
                 {a.viewed_as && (
                   <p className="text-xs text-blue-500 mt-1">
                     while viewing as {a.viewed_as.name} ({a.viewed_as.role_name})
@@ -466,10 +645,11 @@ export default function WorkspaceTeam({ isEditMode }) {
       <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
         <p className="text-xs text-blue-700 font-medium">📋 Founder Note</p>
         <p className="text-xs text-blue-600 mt-0.5">
-          Switch to Edit Mode to act on the customer's behalf (invite, change role, suspend,
-          remove) for non-Owner members. Every action here is logged to both this business's
-          Activity Log and your own platform audit trail. Owner-related actions aren't available
-          yet — that's Stage C.
+          Switch to Edit Mode to act on the customer's behalf. Routine actions on non-Owner
+          members are logged automatically. Any action touching an Owner — invite, role change,
+          suspend, reactivate, remove, or Primary Owner transfer — requires a reason and
+          identity-verification note, and is dual-logged to this business's Activity Log and
+          your own platform Audit Log.
         </p>
       </div>
 
@@ -482,6 +662,10 @@ export default function WorkspaceTeam({ isEditMode }) {
       )}
       <RemoveConfirm member={removeTarget} onConfirm={handleRemove} onCancel={() => setRemoveTarget(null)}
         loading={busyId === removeTarget?.id} />
+      <OwnershipActionModal
+        action={ownershipAction?.type} member={ownershipAction?.member}
+        onConfirm={handleOwnershipConfirm} onCancel={() => setOwnershipAction(null)}
+        loading={ownershipAction && busyId === ownershipAction.member.id} />
       <Toast message={toast} />
     </div>
   )

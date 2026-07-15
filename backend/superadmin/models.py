@@ -67,6 +67,9 @@ class AuditLog(models.Model):
         ('member_reactivated',     'Member Reactivated'),
         ('member_removed',         'Member Removed'),
         ('role_changed',           'Role Changed'),
+        # Primary Owner transfer (Phase B.6 Stage C) — Founder-assisted
+        # handoff of Primary Owner status between two active Owners.
+        ('primary_owner_transferred', 'Primary Owner Transferred'),
         # Product events
         ('product_created',         'Product Created'),
         ('product_updated',         'Product Updated'),
