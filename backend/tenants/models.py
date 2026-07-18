@@ -28,6 +28,7 @@ class Tenant(models.Model):
     # Tu Super Admin se kisi ko bhi access de sakta hai
     ACCESS_TYPES = [
         ('free', 'Free Tier'),
+        ('basic', 'Basic — ₹249/mo'),   # price placeholder, finalize karo
         ('pro', 'Pro — ₹499/mo'),
         ('enterprise', 'Enterprise — ₹999/mo'),
         ('admin_grant', 'Granted by Admin'),

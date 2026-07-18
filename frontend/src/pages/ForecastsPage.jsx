@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import Layout from "../components/Layout"
-import { billingAPI } from "../services/api"
+import { billingAPI, isPlanLimitError, getPlanLimitMessage } from "../services/api"
 
 const PATTERN_CFG = {
   dense:              { label: "Regular Seller",  cls: "bg-green-50 text-green-700" },
@@ -23,7 +23,7 @@ export default function ForecastsPage() {
     setLoading(true)
     billingAPI.getForecasts()
       .then(res => setForecasts(res.data.results))
-      .catch(() => setToast('Could not load forecasts.'))
+      .catch(err => setToast(isPlanLimitError(err) ? getPlanLimitMessage(err) : 'Could not load forecasts.'))
       .finally(() => setLoading(false))
   }
 

@@ -118,6 +118,24 @@ def invite_member(request):
     if not has_permission(request, 'team.manage'):
         return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
+    # Plan-based team size cap (see tenants/plan_limits.py TEAM_MEMBER_LIMITS).
+    # Counts everyone occupying a seat — invited (pending accept), active,
+    # and suspended (still holds their seat, just paused) — 'removed' does
+    # not count, that seat is freed up.
+    from tenants.plan_limits import get_team_member_limit
+    member_limit = get_team_member_limit(tenant)
+    if member_limit is not None:
+        current_seat_count = Membership.objects.filter(
+            tenant=tenant, status__in=['invited', 'active', 'suspended']
+        ).count()
+        if current_seat_count >= member_limit:
+            return Response({
+                'plan_limit': True,
+                'error': f'Your plan allows up to {member_limit} team member(s). Ask the Founder to upgrade this business to invite more.',
+                'resource': 'team_members',
+                'limit': member_limit,
+            }, status=403)
+
     email = (request.data.get('email') or '').strip().lower()
     role_id = request.data.get('role_id')
 
@@ -343,6 +361,14 @@ def activity_log_list(request):
         return Response({'error': 'No active business context.'}, status=400)
     if not has_permission(request, 'team.view_activity'):
         return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    from tenants.plan_limits import has_feature
+    if not has_feature(tenant, 'team_activity_log'):
+        return Response({
+            'plan_limit': True,
+            'error': 'Team Activity Log requires a Pro or Enterprise plan. Ask the Founder to upgrade this business.',
+            'resource': 'team_activity_log',
+        }, status=403)
 
     logs = ActivityLog.objects.filter(tenant=tenant).select_related(
         'actor', 'viewed_as_membership', 'viewed_as_membership__user', 'viewed_as_membership__role'

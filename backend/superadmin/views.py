@@ -20,7 +20,11 @@ def platform_stats(request):
 
     # Plan pricing — Razorpay aane tak yahan se MRR calculate hoga
     # Jab Razorpay aayega, actual payment records se calculate karenge
+    # 'basic' price ₹249 abhi ek placeholder hai — finalize karne ke
+    # baad yahan aur tenants/plan_limits.py PLAN_PRICE_LABELS mein
+    # ek hi jagah change karo.
     PLAN_PRICES = {
+        'basic':      249,
         'pro':        499,
         'enterprise': 999,
         'free':       0,
@@ -39,14 +43,16 @@ def platform_stats(request):
     # Plan-wise counts (naye names)
     plan_counts = {
         'free':        Tenant.objects.filter(access_type='free').count(),
+        'basic':       Tenant.objects.filter(access_type='basic').count(),
         'pro':         Tenant.objects.filter(access_type='pro').count(),
         'enterprise':  Tenant.objects.filter(access_type='enterprise').count(),
         'admin_grant': Tenant.objects.filter(access_type='admin_grant').count(),
     }
 
-    # Estimated MRR — Pro × ₹499 + Enterprise × ₹999
+    # Estimated MRR — Basic × ₹249 + Pro × ₹499 + Enterprise × ₹999
     # "Estimated" kyunki abhi Razorpay nahi hai — actual payments track nahi ho rahe
     estimated_mrr = (
+        plan_counts['basic'] * PLAN_PRICES['basic'] +
         plan_counts['pro'] * PLAN_PRICES['pro'] +
         plan_counts['enterprise'] * PLAN_PRICES['enterprise']
     )
@@ -67,7 +73,7 @@ def platform_stats(request):
         'plan_counts':        plan_counts,
 
         # Legacy fields (backward compatible — frontend pe purana code na toote)
-        'paid_tenants':       plan_counts['pro'] + plan_counts['enterprise'],
+        'paid_tenants':       plan_counts['basic'] + plan_counts['pro'] + plan_counts['enterprise'],
         'free_tenants':       plan_counts['free'],
         'admin_grant_tenants': plan_counts['admin_grant'],
 
@@ -75,6 +81,8 @@ def platform_stats(request):
         'estimated_mrr':      estimated_mrr,
         'platform_revenue':   platform_revenue,
         'mrr_breakdown': {
+            'basic_count':      plan_counts['basic'],
+            'basic_price':      PLAN_PRICES['basic'],
             'pro_count':        plan_counts['pro'],
             'pro_price':        PLAN_PRICES['pro'],
             'enterprise_count': plan_counts['enterprise'],
@@ -413,9 +421,9 @@ def upgrade_tenant(request, tenant_id):
     except Tenant.DoesNotExist:
         return Response({'error': 'Tenant not found.'}, status=404)
 
-    # Plan choose karo — free/pro/enterprise/admin_grant
+    # Plan choose karo — free/basic/pro/enterprise/admin_grant
     new_plan = request.data.get('plan', 'pro')
-    valid_plans = ['free', 'pro', 'enterprise', 'admin_grant']
+    valid_plans = ['free', 'basic', 'pro', 'enterprise', 'admin_grant']
     if new_plan not in valid_plans:
         return Response({'error': f'Invalid plan. Choose from: {", ".join(valid_plans)}'}, status=400)
 
@@ -423,7 +431,7 @@ def upgrade_tenant(request, tenant_id):
     tenant.is_active = True
     tenant.save()
 
-    plan_labels = {'free': 'Free', 'pro': 'Pro', 'enterprise': 'Enterprise', 'admin_grant': 'Admin Granted'}
+    plan_labels = {'free': 'Free', 'basic': 'Basic', 'pro': 'Pro', 'enterprise': 'Enterprise', 'admin_grant': 'Admin Granted'}
     return Response({
         'message': f'{tenant.name} plan updated to {plan_labels[new_plan]} successfully.',
         'access_type': new_plan,

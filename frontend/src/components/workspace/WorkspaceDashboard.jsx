@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { billingAPI, inventoryAPI } from "../../services/api"
+import { billingAPI, inventoryAPI, isPlanLimitError } from "../../services/api"
 
 const SYM = { INR: '₹', USD: '$', AED: 'AED ', GBP: '£', EUR: '€' }
 
@@ -43,20 +43,29 @@ export default function WorkspaceDashboard({ isEditMode }) {
     setError('')
     try {
       const now = new Date()
-      const [summaryRes, lowStockRes, invoicesRes, cashflowRes, healthRes, expenseRes] = await Promise.all([
+      const [summaryRes, lowStockRes, invoicesRes, cashflowRes, expenseRes] = await Promise.all([
         billingAPI.getSummary(),
         inventoryAPI.getLowStock(),
         billingAPI.getInvoices(),
         billingAPI.getCashflow(),
-        billingAPI.getHealthScore(),
         billingAPI.getExpenseSummary(now.getFullYear(), now.getMonth() + 1),
       ])
       setSummary(summaryRes.data)
       setLowStock(lowStockRes.data.products || [])
       setInvoices(invoicesRes.data.slice(0, 5))
       setCashflow(cashflowRes.data)
-      setHealthScore(healthRes.data)
       setExpenseSummary(expenseRes.data)
+
+      // Health Score is plan-gated (Pro/Enterprise). Kept out of the
+      // Promise.all above — a 403 here (viewing a Free/Basic tenant)
+      // must not break the rest of the Founder's support view.
+      try {
+        const healthRes = await billingAPI.getHealthScore()
+        setHealthScore(healthRes.data)
+      } catch (err) {
+        setHealthScore(null)
+        if (!isPlanLimitError(err)) console.error("Health score fetch error:", err)
+      }
     } catch (err) {
       setError('Could not load this business\'s dashboard.')
     } finally {

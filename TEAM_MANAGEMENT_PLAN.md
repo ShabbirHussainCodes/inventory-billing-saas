@@ -63,9 +63,10 @@ Exact permission-per-role mapping FINALIZED — 44 permissions across
 6 categories, migrations 0002/0005/0006/0007 mein seed hui. Poora
 matrix ARCHITECTURE.md mein reference table ke roop mein maujood hai.
 
-CUSTOM ROLES (Phase C — ✅ DONE):
-   Free        → Nahi milega (create block hota hai, 403)
-   Pro/Enterprise/Admin Grant → Milega
+CUSTOM ROLES (Phase C — ✅ DONE, plan gate updated in 4-tier restructure):
+   Free/Basic/Pro → Nahi milega (create block hota hai, 403)
+   Enterprise/Admin Grant → Milega (Enterprise-only — 4-tier restructure ke
+   baad tighten hua, pehle Pro bhi include tha, see PLAN GATING section neeche)
    Schema pehle se hi ready tha (Role.tenant nullable, Permission.category
    grouping ke liye) — koi migration nahi lagi, sirf endpoints + UI bane.
    Gate 'role.manage_custom' permission pe hai — yeh 'team.manage' se
@@ -289,6 +290,10 @@ BUILD ORDER — ACTUAL STATUS
    deta hai (current device sameet — Google/GitHub jaisa "sign out
    everywhere" behavior). SettingsPage.jsx mein "Security" section.
 
+✅ PLAN GATING → 4-tier restructure (Free/Basic/Pro/Enterprise) — DONE
+   (tenants/plan_limits.py PLAN_FEATURES + TEAM_MEMBER_LIMITS, full
+   detail neeche "PLAN GATING" section mein)
+
 🔮 PHASE F (pehle "Phase D" tha) → Future, scope mein nahi abhi:
    - Approval workflows (invoice/discount approval)
    - Departments/Branches
@@ -329,9 +334,99 @@ HONEST FLAGS — ASSUME NAHI KIYA (updated)
    ka poora groundwork pehle se ready tha, sirf endpoints/UI missing
    the. Design decision, bug nahi — par worth noting ki plan se aage
    ka groundwork already exist karta tha bina explicitly track kiye.
-9. 🆕 NAYA FLAG (Phase C part 2 se pata chala): Custom role CREATE sirf
-   Pro/Enterprise/Admin-Grant pe gated hai — EDIT/DELETE existing
-   custom roles kisi bhi plan pe allowed hai (downgrade ke baad bhi).
-   Jaanbujh kar — downgrade hone pe existing setup retroactively
-   todna nahi chahte. Agar future mein yeh strictness badalni ho,
-   yahan flag hai.
+9. ✅ Resolved (updated by 4-tier restructure): Custom role CREATE ab
+   Enterprise/Admin-Grant-only gated hai (pehle Pro bhi include tha) —
+   EDIT/DELETE existing custom roles kisi bhi plan pe allowed hai
+   (downgrade ke baad bhi). Jaanbujh kar — downgrade hone pe existing
+   setup retroactively todna nahi chahte.
+
+═══════════════════════════════════════
+PLAN GATING — 4-TIER RESTRUCTURE (Free/Basic/Pro/Enterprise — ✅ DONE)
+═══════════════════════════════════════
+Context: shuru mein Free/Pro/Enterprise (3 tier) tha. User ne khud ek
+4-tier table propose ki thi (Free/Basic/Pro/Enterprise) customer-facing
+pricing ke liye. Do rows — "Platform Cases" aur "Founder's Audit Log" —
+us table mein customer-facing feature ki tarah likhe the, jo galat tha:
+dono Founder/platform-admin-only tools hain (superadmin app), koi bhi
+business Owner kisi bhi plan pe unhe kabhi access nahi kar sakta — is
+liye implementation mein dono ko customer pricing se explicitly EXCLUDE
+kiya gaya (sirf backend design hi rahenge, pricing table mein nahi
+dikhenge).
+
+Single source of truth: tenants/plan_limits.py
+   - PLAN_LIMITS        → count-based caps (invoices/products/customers),
+                            pehle se tha, ab 'basic' entry bhi added
+   - PLAN_FEATURES       → NAYA — on/off flags: ai_insights,
+                            team_activity_log, custom_roles
+   - TEAM_MEMBER_LIMITS  → NAYA — seat cap per plan (Free=1, Basic=2,
+                            Pro/Enterprise=unlimited)
+   - has_feature(tenant, feature) / get_team_member_limit(tenant) —
+     naye helper functions, is_within_limit() jaisa pattern follow karte
+
+Finalized tier breakdown:
+   FREE (testing tier — repositioned, "sirf trial ke liye" not a real
+   customer plan):
+      10 invoices/mo, 20 products, 25 customers, 1 team member
+      (solo — invite hi nahi kar sakte, seat already Owner ne li hui hai)
+      AI Insights ✗ · Team Activity Log ✗ · Custom Roles ✗
+
+   BASIC:
+      Unlimited invoices/products/customers, up to 2 team members
+      AI Insights ✗ · Team Activity Log ✗ · Custom Roles ✗
+
+   PRO:
+      Everything in Basic + unlimited team members
+      AI Insights ✅ (Profit Intelligence, Health Score, Demand Forecast)
+      Team Activity Log ✅ · Custom Roles ✗ (Enterprise-only)
+
+   ENTERPRISE:
+      Everything in Pro + Custom Roles & Permission Editor + Priority
+      support (support = business commitment, not a code gate)
+
+Files touched:
+   - tenants/models.py — ACCESS_TYPES mein 'basic' add hua (migration
+     0006_alter_tenant_access_type, sandbox-verified)
+   - tenants/plan_limits.py — upar wale naye dicts + helpers
+   - superadmin/views.py — platform_stats aur upgrade_tenant ab 'basic'
+     recognize karte hain (PLAN_PRICES mein basic=₹249 placeholder —
+     final pricing decide karna baaki hai)
+   - billing/views.py — profit_intelligence, business_health_score,
+     generate_demand_forecasts, get_demand_forecasts — sab has_feature
+     'ai_insights' se gated (403 + plan_limit:True response shape,
+     existing is_within_limit() pattern follow kiya)
+   - teams/views.py — activity_log_list ab has_feature 'team_activity_log'
+     se gated; invite_member ab get_team_member_limit() se seat-count
+     enforce karta hai (invited+active+suspended count karta hai,
+     removed nahi — freed seat)
+   - teams/roles.py — PLANS_ALLOWING_CUSTOM_ROLES tuple hata ke
+     has_feature(tenant, 'custom_roles') se replace kiya, response mein
+     plan_limit:True key add hui (consistency ke liye)
+   - Frontend: SettingsPage.jsx PLAN_CONFIG mein 'basic' tier add hua +
+     copy corrected (Custom Roles ab Pro se hata ke sirf Enterprise mein)
+   - Frontend BUG FIX (isi kaam ke dauraan pakda gaya): DashboardPage.jsx
+     aur WorkspaceDashboard.jsx dono mein getHealthScore() Promise.all()
+     ke andar tha — Free/Basic tenant ke liye ab woh call 403 deta hai,
+     jo Promise.all() ko poora reject kar deta, poora dashboard "Could
+     not load" dikhata (sirf health score card nahi, SAB KUCH). Fix:
+     health score ko alag try/catch mein nikala, 403 ho toh sirf card
+     hide hota hai, baaki dashboard normal load hota hai.
+   - ProfitIntelligencePage.jsx, ForecastsPage.jsx — error message ab
+     isPlanLimitError()/getPlanLimitMessage() se specific upgrade text
+     dikhata hai, generic "could not load" nahi
+
+Verification: /tmp/test_4tier.py — 25/25 checks pass (fresh tenant per
+plan, saare 4 gates cross-checked: AI Insights, Activity Log, Custom
+Roles, Team seat limit). Django `manage.py check` clean, frontend
+`vite build` clean, `npm run lint` (oxlint) 0 errors (12 pre-existing
+exhaustive-deps warnings, unrelated).
+
+🆕 NAYA FLAG (is kaam se pata chala): PLAN_LIMITS['basic'] mein
+invoices/products/customers sab None (unlimited) rakhe — Basic aur Pro
+donon "unlimited billing basics" hain, sirf AI Insights/Activity
+Log/team-size mein differentiate karte hain. Yeh ek judgment call hai
+(user ne explicit "jo sahi lage vo karo" bola tha) — agar customer
+feedback se pata chale ki Basic ko bhi kuch count-limit chahiye
+(jaise invoices/mo cap), yahan PLAN_LIMITS['basic'] change karna hoga.
+🆕 NAYA FLAG: 'basic' plan ka price abhi bhi placeholder hai (₹249/mo,
+tenants/models.py aur superadmin/views.py dono jagah) — final pricing
+decide hone ke baad dono jagah update karna padega.

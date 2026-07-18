@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import Layout from "../components/Layout"
-import { billingAPI } from "../services/api"
+import { billingAPI, isPlanLimitError, getPlanLimitMessage } from "../services/api"
 
 const SYM = { INR: '₹', USD: '$', AED: 'AED ', GBP: '£', EUR: '€' }
 
@@ -41,7 +41,9 @@ export default function ProfitIntelligencePage() {
   useEffect(() => {
     billingAPI.getProfitIntelligence()
       .then(res => setData(res.data))
-      .catch(() => setError('Could not load profit intelligence.'))
+      .catch(err => setError(
+        isPlanLimitError(err) ? getPlanLimitMessage(err) : 'Could not load profit intelligence.'
+      ))
       .finally(() => setLoading(false))
   }, [])
 

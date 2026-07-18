@@ -25,10 +25,11 @@ role creation isn't an "Owner-membership-touching" action in the Stage
 C/D sense (it doesn't suspend/remove/demote anyone), so it doesn't need
 the reason+notes friction those actions require.
 
-Plan gate: custom roles are a Pro/Enterprise feature (Tenant.access_type)
-— checked only at CREATE time. A tenant that downgrades keeps whatever
-custom roles it already has (no retroactive breakage), it just can't
-create new ones until it upgrades again.
+Plan gate: custom roles are an Enterprise-only feature (Tenant.access_type,
+see tenants/plan_limits.py's PLAN_FEATURES['custom_roles']) — checked only
+at CREATE time. A tenant that downgrades keeps whatever custom roles it
+already has (no retroactive breakage), it just can't create new ones
+until it upgrades again.
 """
 from django.db import IntegrityError, transaction
 from rest_framework import status
@@ -39,9 +40,9 @@ from rest_framework.response import Response
 from .models import Role, Permission, RolePermission, Membership, ActivityLog
 from .permissions import has_permission
 from superadmin.utils import get_active_tenant
+from tenants.plan_limits import has_feature
 
-PLAN_GATE_MESSAGE = 'Custom roles require a Pro or Enterprise plan. Ask the Founder to upgrade this business.'
-PLANS_ALLOWING_CUSTOM_ROLES = ('pro', 'enterprise', 'admin_grant')
+PLAN_GATE_MESSAGE = 'Custom roles require an Enterprise plan. Ask the Founder to upgrade this business.'
 
 
 def _serialize_role(role, codenames=None):
@@ -89,8 +90,8 @@ def create_custom_role(request):
     if not has_permission(request, 'role.manage_custom'):
         return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
-    if tenant.access_type not in PLANS_ALLOWING_CUSTOM_ROLES:
-        return Response({'error': PLAN_GATE_MESSAGE}, status=403)
+    if not has_feature(tenant, 'custom_roles'):
+        return Response({'plan_limit': True, 'error': PLAN_GATE_MESSAGE, 'resource': 'custom_roles'}, status=403)
 
     name = (request.data.get('name') or '').strip()
     description = (request.data.get('description') or '').strip()

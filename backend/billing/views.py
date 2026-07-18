@@ -849,6 +849,14 @@ def profit_intelligence(request):
     if not has_permission(request, 'profit_intelligence.view'):
         return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
+    from tenants.plan_limits import has_feature
+    if not has_feature(tenant, 'ai_insights'):
+        return Response({
+            'plan_limit': True,
+            'error': 'Profit Intelligence requires a Pro or Enterprise plan. Ask the Founder to upgrade this business.',
+            'resource': 'ai_insights',
+        }, status=403)
+
     from django.db.models import Sum
     from django.db.models.functions import Coalesce
     from decimal import Decimal
@@ -961,6 +969,14 @@ def business_health_score(request):
         return Response({'error': 'No active business context.'}, status=400)
     if not has_permission(request, 'health_score.view'):
         return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    from tenants.plan_limits import has_feature
+    if not has_feature(tenant, 'ai_insights'):
+        return Response({
+            'plan_limit': True,
+            'error': 'Business Health Score requires a Pro or Enterprise plan. Ask the Founder to upgrade this business.',
+            'resource': 'ai_insights',
+        }, status=403)
 
     from django.db.models import Sum, Count, Max, F
     from django.db.models.functions import Coalesce
@@ -1350,6 +1366,14 @@ def generate_demand_forecasts(request):
     if not has_permission(request, 'forecast.generate'):
         return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
+    from tenants.plan_limits import has_feature
+    if not has_feature(tenant, 'ai_insights'):
+        return Response({
+            'plan_limit': True,
+            'error': 'Demand Forecasting requires a Pro or Enterprise plan. Ask the Founder to upgrade this business.',
+            'resource': 'ai_insights',
+        }, status=403)
+
     from inventory.models import Product
     from .forecasting import classify_and_forecast
     from .models import DemandForecast
@@ -1413,6 +1437,14 @@ def get_demand_forecasts(request):
         return Response({'error': 'No active business context.'}, status=400)
     if not has_permission(request, 'forecast.view'):
         return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    from tenants.plan_limits import has_feature
+    if not has_feature(tenant, 'ai_insights'):
+        return Response({
+            'plan_limit': True,
+            'error': 'Demand Forecasting requires a Pro or Enterprise plan. Ask the Founder to upgrade this business.',
+            'resource': 'ai_insights',
+        }, status=403)
 
     from .models import DemandForecast
 

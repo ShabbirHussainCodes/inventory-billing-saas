@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import Layout from "../components/Layout"
-import { billingAPI, inventoryAPI } from "../services/api"
+import { billingAPI, inventoryAPI, isPlanLimitError } from "../services/api"
 import { getUser } from "../utils/auth"
 
 // ─── Reuse StatCard from admin ────────────────────────────────────────────────
@@ -96,21 +96,31 @@ export default function DashboardPage() {
     setError("")
     try {
       const now = new Date()
-      const [summaryRes, lowStockRes, invoicesRes, cashflowRes, healthRes, expenseRes] = await Promise.all([
+      const [summaryRes, lowStockRes, invoicesRes, cashflowRes, expenseRes] = await Promise.all([
         billingAPI.getSummary(),
         inventoryAPI.getLowStock(),
         billingAPI.getInvoices(),
         billingAPI.getCashflow(),
-        billingAPI.getHealthScore(),
         billingAPI.getExpenseSummary(now.getFullYear(), now.getMonth() + 1),
       ])
       setSummary(summaryRes.data)
       setLowStock(lowStockRes.data.products || [])
       setInvoices(invoicesRes.data.slice(0, 5))
       setCashflow(cashflowRes.data)
-      setHealthScore(healthRes.data)
       setExpenseSummary(expenseRes.data)
       setLastUpdated(new Date())
+
+      // Health Score is a separate, plan-gated call (Pro/Enterprise —
+      // AI Insights). Kept out of the Promise.all above on purpose: a
+      // 403 here (Free/Basic tenant) must not break the rest of the
+      // dashboard — it should just quietly not show the card.
+      try {
+        const healthRes = await billingAPI.getHealthScore()
+        setHealthScore(healthRes.data)
+      } catch (err) {
+        setHealthScore(null)
+        if (!isPlanLimitError(err)) console.error("Health score fetch error:", err)
+      }
     } catch (err) {
       console.error("Dashboard fetch error:", err)
       setError("Could not load dashboard. Check your connection and try again.")
