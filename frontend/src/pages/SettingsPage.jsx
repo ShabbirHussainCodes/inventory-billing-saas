@@ -62,8 +62,8 @@ function LogoutEverywhereConfirm({ onConfirm, onCancel, loading }) {
 
 const PLAN_CONFIG = {
   free:         { label: 'Free',       color: 'text-gray-600',  bg: 'bg-gray-100',   desc: '10 invoices/mo · 20 products · 25 customers' },
-  pro:          { label: 'Pro',        color: 'text-blue-600',  bg: 'bg-blue-50',    desc: 'Unlimited invoices · products · customers' },
-  enterprise:   { label: 'Enterprise', color: 'text-purple-600',bg: 'bg-purple-50',  desc: 'Unlimited everything · Multiple users' },
+  pro:          { label: 'Pro',        color: 'text-blue-600',  bg: 'bg-blue-50',    desc: 'Unlimited invoices · products · customers · Custom roles' },
+  enterprise:   { label: 'Enterprise', color: 'text-purple-600',bg: 'bg-purple-50',  desc: 'Unlimited everything · Custom roles · Priority support' },
   admin_grant:  { label: 'Granted',    color: 'text-green-600', bg: 'bg-green-50',   desc: 'Full access granted by BillingMars team' },
 }
 

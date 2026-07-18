@@ -278,6 +278,14 @@ export default function TeamPage() {
   const myMembership = members.find(m => m.email === currentUserEmail)
   const isPrimaryOwner = myMembership?.is_primary_owner === true
 
+  // Progressive disclosure — a solo shop owner with no teammates yet has
+  // zero use for the custom-roles/permission-editor UI, even if they're
+  // on a plan that technically allows it. Only surface "Manage Roles"
+  // once there's actually a team to manage roles FOR (someone invited
+  // or already active, besides yourself). Nothing is blocked here —
+  // this is purely about not showing a button with nothing behind it.
+  const hasTeammates = members.some(m => m.email !== currentUserEmail && m.status !== 'removed')
+
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(""), 3000) }
 
   const fetchAll = async (includeRemoved = showRemoved) => {
@@ -433,7 +441,7 @@ export default function TeamPage() {
           className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition">
           Activity Log →
         </a>
-        {canManageRoles && (
+        {canManageRoles && hasTeammates && (
           <button onClick={() => setShowRolesManager(true)}
             className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition">
             Manage Roles
