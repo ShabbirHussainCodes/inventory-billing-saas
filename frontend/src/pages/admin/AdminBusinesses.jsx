@@ -410,7 +410,7 @@ export default function AdminBusinesses() {
         setToast(`Free access granted to ${business.name} ✓`)
       } else if (action === 'upgrade') {
         const plan = window.prompt(
-          `Change plan for "${business.name}":\n\nEnter: free / pro / enterprise / admin_grant`,
+          `Change plan for "${business.name}":\n\nEnter: free / basic / pro / enterprise / admin_grant`,
           business.access_type || 'pro'
         )
         if (!plan) return
@@ -418,8 +418,8 @@ export default function AdminBusinesses() {
         setToast(`${business.name} plan updated to ${plan} ✓`)
       }
       fetchBusinesses()
-    } catch {
-      setToast("Action failed. Please try again.")
+    } catch (e) {
+      setToast(e?.response?.data?.error || "Action failed. Please try again.")
     } finally {
       setActionLoading(false)
       setConfirm(null)
