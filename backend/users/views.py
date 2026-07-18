@@ -245,3 +245,76 @@ def logout_view(request):
 def profile_view(request):
     serializer = UserProfileSerializer(request.user)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# ─── Phase C (part 2) — Device Sessions / Logout Everywhere ────────────────
+#
+# Design note (v1, deliberately simplified): SIMPLE_JWT has
+# ROTATE_REFRESH_TOKENS=True + BLACKLIST_AFTER_ROTATION=True, so a
+# refresh token's jti changes every ~15 minutes as the access token is
+# silently refreshed. That makes precise "revoke just THIS one device"
+# tracking fragile without adding a separate stable session-id claim
+# that survives rotation — decided against that complexity for v1.
+#
+# So this is intentionally two simpler things instead of one precise one:
+# 1. list_login_sessions — a read-only history from the LoginEvent model
+#    (already existed, already recorded IP/user-agent/tenant on every
+#    login — just never had a UI). Informational, not tied to whether
+#    that specific token is still valid right now.
+# 2. logout_everywhere — a blunt, honest "kill every outstanding refresh
+#    token this user has" using SimpleJWT's own OutstandingToken/
+#    BlacklistedToken tables (already installed, already populated on
+#    every login because of the blacklist app). This DOES include the
+#    current device — same "sign out completely, log back in everywhere"
+#    semantics as Google/GitHub's "sign out all sessions".
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_login_sessions(request):
+    from teams.models import LoginEvent
+
+    events = LoginEvent.objects.filter(
+        user=request.user, success=True
+    ).select_related('tenant').order_by('-created_at')[:20]
+
+    return Response([{
+        'id': str(e.id),
+        'ip_address': e.ip_address,
+        'user_agent': e.user_agent,
+        'tenant_name': e.tenant.name if e.tenant else None,
+        'created_at': e.created_at.isoformat(),
+    } for e in events])
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_everywhere(request):
+    from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+    from django.utils import timezone
+
+    # Same View-As cleanup as the single-device logout_view above —
+    # logging out everywhere should obviously also end any active
+    # View-As session this user (Owner or Founder) initiated.
+    try:
+        from teams.models import ViewAsSession
+        ViewAsSession.objects.filter(
+            initiator=request.user, is_active=True
+        ).update(is_active=False, ended_at=timezone.now(), end_reason='initiator_logged_out')
+    except Exception:
+        pass
+
+    outstanding = OutstandingToken.objects.filter(
+        user=request.user, expires_at__gt=timezone.now()
+    ).exclude(
+        id__in=BlacklistedToken.objects.values_list('token_id', flat=True)
+    )
+
+    count = 0
+    for token in outstanding:
+        BlacklistedToken.objects.get_or_create(token=token)
+        count += 1
+
+    return Response({
+        'message': f'Signed out of {count} session(s), including this one. Please sign in again.',
+        'count': count,
+    })

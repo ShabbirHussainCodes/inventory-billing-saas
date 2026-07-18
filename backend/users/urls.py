@@ -10,6 +10,10 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('profile/', views.profile_view, name='profile'),
 
+    # Phase C (part 2) — Device Sessions / Logout Everywhere
+    path('sessions/', views.list_login_sessions, name='login-sessions'),
+    path('logout-everywhere/', views.logout_everywhere, name='logout-everywhere'),
+
     # JWT Token Refresh
     path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
 ]

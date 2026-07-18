@@ -1,6 +1,64 @@
 import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 import Layout from "../components/Layout"
-import { tenantAPI } from "../services/api"
+import { tenantAPI, authAPI } from "../services/api"
+import { clearAuth } from "../utils/auth"
+
+// ─── Phase C (part 2) — Device Sessions ────────────────────────────────────
+// Lightweight user-agent -> readable label, no external library. Good
+// enough to distinguish "Chrome on Windows" from "Safari on iPhone" for
+// a login-history list — not meant to be a precise device-fingerprint.
+function describeUserAgent(ua) {
+  if (!ua) return "Unknown device"
+  const browser =
+    /Edg\//.test(ua) ? "Edge" :
+    /Chrome\//.test(ua) ? "Chrome" :
+    /Firefox\//.test(ua) ? "Firefox" :
+    /Safari\//.test(ua) ? "Safari" : "Browser"
+  const os =
+    /iPhone|iPad/.test(ua) ? "iOS" :
+    /Android/.test(ua) ? "Android" :
+    /Mac OS X/.test(ua) ? "macOS" :
+    /Windows/.test(ua) ? "Windows" :
+    /Linux/.test(ua) ? "Linux" : ""
+  return os ? `${browser} on ${os}` : browser
+}
+
+function timeAgo(isoString) {
+  const diff = Date.now() - new Date(isoString).getTime()
+  const mins = Math.floor(diff / 60000)
+  const hours = Math.floor(mins / 60)
+  const days = Math.floor(hours / 24)
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins}m ago`
+  if (hours < 24) return `${hours}h ago`
+  if (days < 7) return `${days}d ago`
+  return new Date(isoString).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+}
+
+function LogoutEverywhereConfirm({ onConfirm, onCancel, loading }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+        <p className="text-base font-semibold text-gray-900">Log out of all devices?</p>
+        <p className="mt-1.5 text-sm text-gray-500">
+          This signs you out everywhere — <strong className="text-gray-800">including this device.</strong> You'll
+          need to log in again here too.
+        </p>
+        <div className="mt-5 flex justify-end gap-3">
+          <button onClick={onCancel} disabled={loading}
+            className="rounded-lg border border-gray-200 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={loading}
+            className="rounded-lg bg-red-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50">
+            {loading ? "Signing out…" : "Log out everywhere"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const PLAN_CONFIG = {
   free:         { label: 'Free',       color: 'text-gray-600',  bg: 'bg-gray-100',   desc: '10 invoices/mo · 20 products · 25 customers' },
@@ -10,6 +68,7 @@ const PLAN_CONFIG = {
 }
 
 export default function SettingsPage() {
+  const navigate = useNavigate()
   const [form, setForm] = useState({
     name: "", gst_number: "", business_phone: "",
     business_email: "", business_address: "", business_website: "",
@@ -20,6 +79,12 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState("")
 
+  // Phase C (part 2) — Device Sessions / Logout Everywhere
+  const [sessions, setSessions] = useState([])
+  const [sessionsLoading, setSessionsLoading] = useState(true)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
+
   useEffect(() => {
     tenantAPI.getSettings()
       .then(res => {
@@ -28,7 +93,26 @@ export default function SettingsPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false))
+
+    authAPI.getLoginSessions()
+      .then(res => setSessions(res.data))
+      .catch(console.error)
+      .finally(() => setSessionsLoading(false))
   }, [])
+
+  const handleLogoutEverywhere = async () => {
+    setLoggingOut(true)
+    try {
+      await authAPI.logoutEverywhere()
+    } catch {
+      // Even if the call fails, clearing local tokens is the safe default —
+      // we don't want a network error to leave the user thinking they're
+      // still safely logged out elsewhere when the request never landed.
+    } finally {
+      clearAuth()
+      navigate("/")
+    }
+  }
 
   const handle = e => setForm(p => ({ ...p, [e.target.name]: e.target.value }))
 
@@ -175,7 +259,55 @@ export default function SettingsPage() {
             </button>
           </div>
         </div>
+
+        {/* Security — Phase C (part 2) */}
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-3">
+          <div>
+            <p className="text-sm font-medium text-gray-900">Security</p>
+            <p className="text-xs text-gray-400 mt-0.5">Your recent sign-ins on this account.</p>
+          </div>
+
+          {sessionsLoading ? (
+            <div className="animate-pulse space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-10 rounded-lg bg-gray-100" />)}
+            </div>
+          ) : sessions.length === 0 ? (
+            <p className="text-xs text-gray-400">No sign-in history yet.</p>
+          ) : (
+            <div className="rounded-lg border border-gray-100 divide-y divide-gray-50">
+              {sessions.map(s => (
+                <div key={s.id} className="flex items-center justify-between px-3 py-2.5">
+                  <div>
+                    <p className="text-sm text-gray-700">{describeUserAgent(s.user_agent)}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {s.ip_address || "Unknown IP"}{s.tenant_name ? ` · ${s.tenant_name}` : ""}
+                    </p>
+                  </div>
+                  <span className="text-xs text-gray-400 flex-shrink-0">{timeAgo(s.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="pt-2 border-t border-gray-100">
+            <p className="text-xs text-gray-400 mb-2">
+              Signed in somewhere you don't recognize? Log out of every device at once.
+            </p>
+            <button onClick={() => setShowLogoutConfirm(true)}
+              className="rounded-lg border border-red-100 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 transition">
+              Log out of all devices
+            </button>
+          </div>
+        </div>
       </div>
+
+      {showLogoutConfirm && (
+        <LogoutEverywhereConfirm
+          onConfirm={handleLogoutEverywhere}
+          onCancel={() => setShowLogoutConfirm(false)}
+          loading={loggingOut}
+        />
+      )}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm text-white shadow-lg">

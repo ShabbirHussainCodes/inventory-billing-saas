@@ -108,6 +108,10 @@ export const authAPI = {
   register: (data) => api.post('/auth/register/', data),
   logout: (data) => api.post('/auth/logout/', data),
   profile: () => api.get('/auth/profile/'),
+
+  // Phase C (part 2) — Device Sessions / Logout Everywhere
+  getLoginSessions: () => api.get('/auth/sessions/'),
+  logoutEverywhere: () => api.post('/auth/logout-everywhere/'),
 }
 
 export const inventoryAPI = {
