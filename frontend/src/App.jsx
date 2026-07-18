@@ -30,6 +30,7 @@ import AdminBusinesses from "./pages/admin/AdminBusinesses"
 import AdminUsers from "./pages/admin/AdminUsers"
 import AdminSettings from "./pages/admin/AdminSettings"
 import AuditLogPage from "./pages/admin/AuditLogPage"
+import PlatformCasesPage from "./pages/admin/PlatformCasesPage"
 import DeletionHistoryPage from "./pages/admin/DeletionHistoryPage"
 import AdminAnalyticsPage from "./pages/admin/AdminAnalyticsPage"
 
@@ -78,6 +79,7 @@ function App() {
           <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/settings" element={<AdminSettings />} />
           <Route path="/admin/audit" element={<AuditLogPage />} />
+          <Route path="/admin/platform-cases" element={<PlatformCasesPage />} />
           <Route path="/admin/deletions" element={<DeletionHistoryPage />} />
           <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
         </Route>

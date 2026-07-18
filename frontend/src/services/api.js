@@ -259,6 +259,22 @@ export const superAdminAPI = {
     params.append('page_size', pageSize)
     return api.get(`/superadmin/audit-logs/?${params.toString()}`)
   },
+
+  // ── Phase B.6 Stage E — Platform Cases ──
+  // Exceptional/adversarial situations (fraud, legal, ownership disputes,
+  // account recovery) — deliberately separate from the routine team
+  // actions in teamAPI. See superadmin.models.PlatformCase (backend).
+  getPlatformCases: ({ status = null, caseType = null, tenantId = null } = {}) => {
+    const params = new URLSearchParams()
+    if (status) params.append('status', status)
+    if (caseType) params.append('case_type', caseType)
+    if (tenantId) params.append('tenant_id', tenantId)
+    return api.get(`/superadmin/platform-cases/?${params.toString()}`)
+  },
+  getPlatformCase: (caseId) => api.get(`/superadmin/platform-cases/${caseId}/`),
+  getTenantMembersForCase: (tenantId) => api.get(`/superadmin/tenants/${tenantId}/members-for-case/`),
+  createPlatformCase: (data) => api.post('/superadmin/platform-cases/create/', data),
+  closePlatformCase: (caseId, data) => api.patch(`/superadmin/platform-cases/${caseId}/close/`, data),
 }
 
 export default api

@@ -70,6 +70,12 @@ class AuditLog(models.Model):
         # Primary Owner transfer (Phase B.6 Stage C) — Founder-assisted
         # handoff of Primary Owner status between two active Owners.
         ('primary_owner_transferred', 'Primary Owner Transferred'),
+        # Platform Case events (Phase B.6 Stage E) — exceptional/
+        # adversarial situations, tracked separately from routine
+        # Stage C actions. See superadmin.models.PlatformCase.
+        ('platform_case_opened',    'Platform Case Opened'),
+        ('platform_case_closed',    'Platform Case Closed'),
+        ('password_reset',          'Password Reset'),
         # Product events
         ('product_created',         'Product Created'),
         ('product_updated',         'Product Updated'),
@@ -172,3 +178,106 @@ class TenantDeletionLog(models.Model):
 
     def __str__(self):
         return f"{self.tenant_name} deleted on {self.deleted_at.date()}"
+
+
+class PlatformCase(models.Model):
+    """
+    Phase B.6 Stage E — Platform Case framework.
+
+    Yeh Stage C se DELIBERATELY alag hai. Stage C ("routine Founder-
+    assisted actions") ke liye bas reason + identity_verification_notes
+    kaafi hai — customer khud call karke pooch raha hai, Founder turant
+    kar deta hai, dono logs mein likh jaata hai, kaam khatam.
+
+    Platform Case genuinely EXCEPTIONAL / adversarial situations ke
+    liye hai — fraud, legal request, ownership dispute (dono Owners
+    apna-apna daava kar rahe hain), account recovery, emergency
+    intervention. Yahan ek proper case record chahiye: kab khula, kis
+    wajah se, kisne khola, kisne execute kiya, kya decide hua, kab band
+    hua — chahe underlying DB action (jaise Primary Owner transfer)
+    technically Stage C ke jaisa hi ho.
+
+    Design decisions (locked after discussion):
+    - Lifecycle: sirf open → closed (koi "investigating" state nahi,
+      v1 ke liye). Case khula reh sakta hai jab tak decision nahi hota —
+      investigation off-platform hoti hai, case sirf record rakhta hai.
+    - Business ko is case ka koi trace kabhi nahi dikhta — pura
+      PlatformCase model AuditLog jaisa hi Founder-only hai. Jo actual
+      action execute hota hai (jaise primary owner transfer), woh
+      business ki apni ActivityLog mein NORMAL entry ki tarah dikhta
+      hai — bina kisi "yeh ek case tha" reference ke.
+    - created_by aur executed_by jaan-boojh kar alag fields hain, chahe
+      abhi dono hamesha same Founder hon — future-proofing for a
+      scenario where ek support rep case khole aur koi senior/Founder
+      use execute kare.
+    - Two-step flow: case open() turant record ban jaata hai (reason +
+      notes save ho jaate hain) — actual system action sirf close()
+      ke waqt hota hai, jab resolution decide ho chuka ho.
+    """
+
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('closed', 'Closed'),
+    ]
+
+    # Extensible by design — sirf pehle 2 case types abhi implement
+    # hain (forced_ownership_transfer, account_recovery), lekin naye
+    # case types add karna sirf ek naya choice + close() mein ek naya
+    # branch hai, koi schema change nahi.
+    CASE_TYPE_CHOICES = [
+        ('forced_ownership_transfer', 'Forced Ownership Transfer'),
+        ('account_recovery', 'Account Recovery'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    case_type = models.CharField(max_length=50, choices=CASE_TYPE_CHOICES)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='open')
+
+    tenant = models.ForeignKey(
+        'tenants.Tenant', on_delete=models.CASCADE, related_name='platform_cases'
+    )
+
+    # Generic target references — most case types will need one or the
+    # other (or both). Both optional since not every future case type
+    # will need both.
+    target_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='platform_cases_as_target'
+    )
+    target_membership = models.ForeignKey(
+        'teams.Membership', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='platform_cases_as_target'
+    )
+
+    # Opened at — mandatory accountability fields, same pattern as
+    # Stage C's _founder_ownership_fields, just persisted on a proper
+    # case record instead of only inside a log entry's details JSON.
+    reason = models.TextField()
+    identity_verification_notes = models.TextField()
+    details = models.JSONField(default=dict, blank=True)  # open-time extra structured data
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='platform_cases_created'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    # Closed at — filled only when the case is resolved and the actual
+    # system action has been executed.
+    resolution_notes = models.TextField(blank=True)
+    resolution_details = models.JSONField(default=dict, blank=True)  # close-time extra structured data
+    executed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='platform_cases_executed'
+    )
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['tenant', '-created_at']),
+            models.Index(fields=['status', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.get_case_type_display()} | {self.tenant.name} | {self.status}"

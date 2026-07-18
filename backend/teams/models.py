@@ -352,6 +352,10 @@ class ActivityLog(models.Model):
         ('role_deleted',       'Role Deleted'),
         # Phase B.6 Stage 1 — Primary Owner
         ('primary_owner_transferred', 'Primary Owner Transferred'),
+        # Phase B.6 Stage E — Platform Case executions. Business sees
+        # this exactly like any other normal action (no case reference
+        # here — that stays Founder-only in superadmin.PlatformCase).
+        ('password_reset', 'Password Reset'),
         # View-as
         ('view_as_started',    'View As Started'),
         ('view_as_ended',      'View As Ended'),

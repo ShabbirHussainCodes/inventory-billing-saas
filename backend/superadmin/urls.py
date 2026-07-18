@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views
+from . import views, platform_cases
 
 urlpatterns = [
     # Platform Stats
@@ -40,4 +40,11 @@ urlpatterns = [
 
     # ── Phase 3 Analytics ──
     path('analytics/', views.platform_analytics, name='platform-analytics'),
+
+    # ── Phase B.6 Stage E — Platform Cases ──
+    path('platform-cases/', platform_cases.list_platform_cases, name='platform-case-list'),
+    path('platform-cases/create/', platform_cases.create_platform_case, name='platform-case-create'),
+    path('platform-cases/<uuid:case_id>/', platform_cases.platform_case_detail, name='platform-case-detail'),
+    path('platform-cases/<uuid:case_id>/close/', platform_cases.close_platform_case, name='platform-case-close'),
+    path('tenants/<uuid:tenant_id>/members-for-case/', platform_cases.tenant_members_for_case, name='tenant-members-for-case'),
 ]

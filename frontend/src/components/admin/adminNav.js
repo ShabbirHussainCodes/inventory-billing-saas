@@ -8,6 +8,7 @@ export const adminNav = [
   { to: "/admin/users", label: "Users", icon: "users" },
   { to: "/admin/analytics", label: "Analytics", icon: "analytics" },
   { to: "/admin/audit", label: "Audit log", icon: "audit" },
+  { to: "/admin/platform-cases", label: "Platform Cases", icon: "shield" },
   { to: "/admin/deletions", label: "Deletion history", icon: "trash" },
   { to: "/admin/settings", label: "Settings", icon: "settings" },
 ]
