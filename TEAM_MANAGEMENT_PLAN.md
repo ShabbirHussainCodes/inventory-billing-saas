@@ -4,6 +4,14 @@
 > real code mein ban chuka hai aur sandbox-verified hai. Jo 🔄 IN PROGRESS /
 > ⏳ PENDING hai, woh design-locked hai but implement nahi hua abhi.
 
+> ## 🏁 STATUS (latest update): TEAM MANAGEMENT MODULE — POORA COMPLETE
+> Phase A se Phase C tak (Custom Roles + Device Sessions/Logout-Everywhere
+> sameet) sab kuch ban chuka hai, sandbox mein verify hua, aur commit ho
+> chuka hai. Sirf 🔮 Phase F (approval workflows, departments/branches)
+> baaki hai — jo shuru se hi "future, abhi scope mein nahi" mark tha.
+> Neeche har section apna individual status rakhta hai, is banner ke
+> baad detail padhte raho.
+
 ═══════════════════════════════════════
 CORE ARCHITECTURE — EK LINE MEIN
 ═══════════════════════════════════════
@@ -55,11 +63,22 @@ Exact permission-per-role mapping FINALIZED — 44 permissions across
 6 categories, migrations 0002/0005/0006/0007 mein seed hui. Poora
 matrix ARCHITECTURE.md mein reference table ke roop mein maujood hai.
 
-CUSTOM ROLES (Phase C — ⏳ NOT STARTED):
-   Free        → Nahi milega (sirf 5 system roles)
-   Pro/Enterprise → Milega
-   Admin Grant → Automatically milega (plan_limits system se)
-   Schema already ready hai (Role.tenant nullable) — UI/endpoints bante nahi.
+CUSTOM ROLES (Phase C — ✅ DONE):
+   Free        → Nahi milega (create block hota hai, 403)
+   Pro/Enterprise/Admin Grant → Milega
+   Schema pehle se hi ready tha (Role.tenant nullable, Permission.category
+   grouping ke liye) — koi migration nahi lagi, sirf endpoints + UI bane.
+   Gate 'role.manage_custom' permission pe hai — yeh 'team.manage' se
+   JAANBUJH KAR alag permission hai (Phase A se hi seed thi, comment mein
+   "Deliberately excluded" likha tha Manager ke liye) — Manager team
+   manage kar sakta hai par naye roles nahi bana sakta, sirf Owner (aur
+   Owner-role-parity se Founder) bana sakta hai.
+   Naye endpoints: GET /team/permissions/ (catalog), POST /team/roles/create/,
+   PATCH /team/roles/<id>/, DELETE /team/roles/<id>/delete/. Plan gate
+   sirf CREATE pe hai — downgrade hone pe existing custom roles edit/delete
+   ho sakte hain, sirf naye nahi ban sakte (retroactive breakage avoid).
+   Frontend: TeamPage.jsx mein "Manage Roles" button, RolesManager.jsx
+   component — category-wise grouped checkbox permission editor.
 
 ═══════════════════════════════════════
 STAFF AUTHENTICATION — ALAG ID/PASSWORD (Phase A/B — ✅ DONE)
@@ -155,9 +174,9 @@ sakta hai" wala governance gap discover hua, isliye add hua.
 - Baaki Owners ke liye day-to-day permissions IDENTICAL rehti hain —
   Primary sirf owner-management authority ke liye alag hai
 
-⏳ ABHI PENDING (Stage D — neeche dekho): non-Primary Owner aaj bhi
-   kisi doosre Owner ko suspend/remove/demote kar sakta hai. Yeh
-   Stage D mein band hoga.
+✅ RESOLVED (Stage D — neeche dekho): non-Primary Owner ab kisi
+   doosre Owner ko suspend/reactivate/remove/demote nahi kar sakta —
+   sirf Primary Owner kar sakta hai. Stage D mein close hua.
 
 ═══════════════════════════════════════
 FOUNDER = PLATFORM ADMINISTRATOR (Phase B.6 Stage A-E — NAYA, discussion se aaya)
@@ -197,47 +216,53 @@ STAGES (is philosophy ko implement karne ke liye):
      "GET hamesha allowed during support" rule already isse cover
      karta tha. Koi action button nahi — pure read-only.
 
-  ⏳ Stage B — Founder operational parity, routine actions
-     has_permission() ka Founder-in-Edit-Mode path harden hoga — abhi
-     blanket True return karta hai kisi bhi codename ke liye jab
-     Edit Mode ho; isse tenant ke actual Owner role ke permission-set
-     ke against check karega (View-As jaisa hi pattern, bas Owner
-     role fixed target hai). Phir Founder UI (invite/role-change/
-     suspend/remove) Team tab mein wire hoga, Edit Mode-gated.
+  ✅ Stage B — Founder operational parity, routine actions — DONE
+     has_permission() ka Founder-in-Edit-Mode path harden hua — pehle
+     blanket True tha kisi bhi codename ke liye jab Edit Mode ho; ab
+     tenant ke actual Owner role ke permission-set ke against fresh
+     check karta hai (View-As jaisa hi pattern, bas Owner role fixed
+     target hai). Founder UI (invite/role-change/suspend/remove)
+     Team tab mein wire hua, Edit Mode-gated.
 
-  ⏳ Stage C — Founder parity, sensitive ownership actions
-     remove/suspend/change-role (jab target Owner ho) aur Make
-     Primary Owner — Founder-in-Edit-Mode ko allow karega, par
-     MANDATORY reason + identity-verification-notes fields ke saath,
-     jo alag se distinctly logged hongi (routine actions se separate
-     dikhengi audit trail mein).
+  ✅ Stage C — Founder parity, sensitive ownership actions — DONE
+     remove/suspend/reactivate/change-role (jab target Owner ho) aur
+     Make Primary Owner — Founder-in-Edit-Mode ab allow karta hai, par
+     MANDATORY reason + identity-verification-notes fields ke saath
+     (_founder_ownership_fields helper, teams/views.py). Yeh alag se
+     distinctly logged hote hain — details JSON mein
+     'founder_ownership_action: True' + reason + notes — dono
+     ActivityLog (business-visible) aur AuditLog (Founder-only) mein.
 
-  ⏳ Stage D — Owner-vs-Owner guards (Primary Owner authority)
-     Sirf Primary Owner kisi doosre Owner ko suspend/remove/demote
-     kar sakta hai. Non-primary Owners baaki sab kuch waise hi kar
-     sakte hain jaise aaj karte hain.
+  ✅ Stage D — Owner-vs-Owner guards (Primary Owner authority) — DONE
+     Sirf Primary Owner kisi doosre Owner ko suspend/reactivate/remove/
+     demote kar sakta hai (_require_primary_owner helper). Reactivate
+     bhi guard mein shamil kiya gaya — warna non-primary Owner Primary
+     ke suspend ko turant undo kar sakta tha, poora guard bekaar ho
+     jaata. Promotion-TO-Owner jaanbujh kar UNguarded rakha — usse
+     kisi existing Owner ki standing kam nahi hoti, sirf ek peer add
+     hota hai. Non-primary Owners baaki sab kuch waise hi kar sakte
+     hain jaise pehle karte the.
 
-  ⏳ Stage E — Platform Case generic framework
-     Model: case_type (enum — primary_transfer, forced_owner_removal,
-     account_recovery, fraud_freeze, legal_hold, ...), status
-     lifecycle (open → under_review → resolved/rejected — single
-     linear flow nahi, real disputes multi-step hote hain), reason,
-     identity_verification_notes, created_by, executed_by, timestamps.
-     Founder Panel mein naya "Platform Cases" section. Pehle 1-2 case
-     types implement honge (likely: forced ownership transfer +
-     account recovery).
+  ✅ Stage E — Platform Case generic framework — DONE
+     Model (superadmin.PlatformCase): case_type, status (open/closed —
+     v1 ke liye single-step lifecycle, "under_review" jaisa multi-step
+     add nahi kiya abhi), reason, identity_verification_notes, details
+     (JSON), created_by, executed_by (jaanbujh kar ALAG fields rakhe
+     future dual-control ke liye), timestamps. Founder Panel mein naya
+     "Platform Cases" section (PlatformCasesPage.jsx). Pehle 2 case
+     types: forced_ownership_transfer + account_recovery (jo pehle se
+     mojood — par zero-audit — reset_user_password endpoint ko wrap
+     karta hai). Two-step flow: case open() sirf record banata hai,
+     actual action sirf close() pe execute hota hai.
 
-     Design mein carry karne wale open points (philosophy-level
-     decide ho chuka, implementation ke time finalize honge):
-     - Kya har case ko ek "severity/urgency" flag chahiye (true
-       emergency = turant execute vs contested dispute = cooling-off
-       period)?
-     - Kya affected business (uske Owners) ko kabhi pata chalna
-       chahiye ki unke account pe Platform Case chala — kम se kam
-       unke apne Activity Log mein ek trace?
-     - created_by/executed_by alag rakhna hai even though abhi dono
-       hamesha same (Founder) honge — future mein jab support team
-       badhegi, tab dual-control retrofit na karna pade.
+     Open points resolve ho chuke (final decisions):
+     - Severity/urgency flag — NAHI add kiya, v1 simple rakha
+     - Business ko trace dikhna chahiye? — NAHI, fully invisible.
+       Underlying action (jaise primary transfer) business ki apni
+       ActivityLog mein NORMAL entry ki tarah dikhta hai, koi case
+       reference nahi. Sirf Founder-side AuditLog mein platform_case_id
+       reference hota hai.
+     - created_by/executed_by — ALAG rakhe, jaisa decide hua tha.
 
 ═══════════════════════════════════════
 BUILD ORDER — ACTUAL STATUS
@@ -247,13 +272,23 @@ BUILD ORDER — ACTUAL STATUS
 ✅ PHASE B.5 → "View As Member" — DONE
 ✅ PHASE B.6 Stage 1 → Primary Owner core — DONE
 ✅ PHASE B.6 Stage A → Founder read-only Team visibility — DONE
-⏳ PHASE B.6 Stage B → Founder parity, routine actions — NEXT
-⏳ PHASE B.6 Stage C → Founder parity, sensitive ownership actions
-⏳ PHASE B.6 Stage D → Owner-vs-Owner guards
-⏳ PHASE B.6 Stage E → Platform Case framework
-⏳ PHASE C → Custom Roles + Refinement (permission editor UI,
-   device sessions/logout-everywhere — SimpleJWT exact syntax
-   verify karenge implementation ke time)
+✅ PHASE B.6 Stage B → Founder parity, routine actions — DONE
+✅ PHASE B.6 Stage C → Founder parity, sensitive ownership actions — DONE
+✅ PHASE B.6 Stage D → Owner-vs-Owner guards — DONE
+✅ PHASE B.6 Stage E → Platform Case framework — DONE
+✅ PHASE C (part 1) → Custom Roles + Permission Editor — DONE
+   (teams/roles.py, RolesManager.jsx — koi migration nahi lagi,
+   schema Phase A se hi ready tha)
+✅ PHASE C (part 2) → Device Sessions / Logout-Everywhere — DONE
+   Simplified v1: precise per-device revoke NAHI banaya (SimpleJWT ka
+   ROTATE_REFRESH_TOKENS=True hone se jti har ~15min mein badalta hai,
+   isliye "sirf ek device revoke karo" fragile ho jaata bina naye
+   stable session-id claim ke). Iski jagah: login history (existing
+   LoginEvent model se, koi naya table nahi) + "Logout Everywhere"
+   button jo user ke SAARE outstanding refresh tokens blacklist kar
+   deta hai (current device sameet — Google/GitHub jaisa "sign out
+   everywhere" behavior). SettingsPage.jsx mein "Security" section.
+
 🔮 PHASE F (pehle "Phase D" tha) → Future, scope mein nahi abhi:
    - Approval workflows (invoice/discount approval)
    - Departments/Branches
@@ -267,18 +302,36 @@ HONEST FLAGS — ASSUME NAHI KIYA (updated)
    dono apps ke saare views mein wire ho chuka hai
 3. ✅ Resolved: Role-permission exact mapping finalize ho chuki
    (44 permissions, ARCHITECTURE.md mein documented)
-4. ⏳ Abhi bhi open: SimpleJWT device-session/logout-everywhere exact
-   syntax — Phase C ke time current docs verify honge
-5. 🆕 NAYA FLAG (is discussion se pata chala): aaj ke code mein,
-   Founder Edit Mode mein hote hue technically team.* permissions
-   ke liye bhi True return kar sakta hai (has_permission() method-
-   based hai, permission-category-aware nahi) — koi Founder UI abhi
-   isse reach nahi karti, isliye exploitable nahi hai practically,
-   par Stage B/C isko explicitly, deliberately design karke close
-   karenge, accident se nahi.
-6. 🆕 NAYA FLAG: Primary Owner ka DB constraint sirf "at most one"
-   enforce karta hai (Postgres partial unique index) — "at least
-   one" (never zero) purely procedurally guarantee hoti hai
-   (registration + backfill + atomic handoff + future Stage D
-   guards), koi DB-level trigger nahi hai. Design decision hai,
-   bug nahi.
+4. ✅ Resolved: SimpleJWT device-session/logout-everywhere ban chuka —
+   par precise per-device revoke NAHI (Phase C part 2 ka design note
+   dekho upar) — ROTATE_REFRESH_TOKENS ki wajah se jaanbujh kar
+   simplified rakha.
+5. ✅ Resolved: Founder Edit Mode ka blanket-True gap Stage B mein
+   explicitly close hua — ab tenant ke actual Owner role permission-set
+   ke against fresh check hota hai, blanket bypass nahi.
+6. 🆕 NAYA FLAG (still accurate): Primary Owner ka DB constraint sirf
+   "at most one" enforce karta hai (Postgres partial unique index) —
+   "at least one" (never zero) purely procedurally guarantee hoti hai
+   (registration + backfill + atomic handoff + Stage D guards), koi
+   DB-level trigger nahi hai. Design decision hai, bug nahi.
+7. 🆕 NAYA FLAG (Stage E se pata chala): reset_user_password endpoint
+   (superadmin/views.py) pehle ZERO audit trail ke saath tha — koi
+   reason, koi log, kuch nahi. Stage E ne isko account_recovery
+   Platform Case ke through wrap kiya (ab reason + notes + case record
+   + AuditLog mandatory hai). Yeh gap kaise mila iska credit: Stage E
+   design karte waqt superadmin/views.py explicitly check kiya gaya —
+   par POORA file audit nahi hua abhi, sirf yeh ek function. Baaki
+   Founder actions us file mein similar gap rakh sakte hain — flag
+   kiya hua hai, resolve nahi hua.
+8. 🆕 NAYA FLAG (Phase C se pata chala): 'role.manage_custom' permission
+   Phase A se hi seed thi (migration 0002, comment mein "Create / Edit
+   / Delete Custom Roles (Pro/Enterprise)" likha hua tha) — is feature
+   ka poora groundwork pehle se ready tha, sirf endpoints/UI missing
+   the. Design decision, bug nahi — par worth noting ki plan se aage
+   ka groundwork already exist karta tha bina explicitly track kiye.
+9. 🆕 NAYA FLAG (Phase C part 2 se pata chala): Custom role CREATE sirf
+   Pro/Enterprise/Admin-Grant pe gated hai — EDIT/DELETE existing
+   custom roles kisi bhi plan pe allowed hai (downgrade ke baad bhi).
+   Jaanbujh kar — downgrade hone pe existing setup retroactively
+   todna nahi chahte. Agar future mein yeh strictness badalni ho,
+   yahan flag hai.
