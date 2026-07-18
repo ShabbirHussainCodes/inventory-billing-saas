@@ -212,6 +212,15 @@ export const teamAPI = {
 
   // Phase B.6 Stage 1 — Primary Owner
   makePrimaryOwner: (membershipId, extra = {}) => api.patch(`/team/members/${membershipId}/make-primary/`, extra),
+
+  // Phase C — Custom Roles + Permission Editor. Gated on role.manage_custom
+  // (Owner-only by default), separate from team.manage (which Manager also
+  // has). Creating requires a Pro/Enterprise plan; editing/deleting existing
+  // custom roles does not.
+  getPermissionCatalog: () => api.get('/team/permissions/'),
+  createRole: (data) => api.post('/team/roles/create/', data),
+  updateRole: (roleId, data) => api.patch(`/team/roles/${roleId}/`, data),
+  deleteRole: (roleId) => api.delete(`/team/roles/${roleId}/delete/`),
 }
 
 export const tenantAPI = {

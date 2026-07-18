@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import Layout from "../components/Layout"
 import { teamAPI } from "../services/api"
 import { getUser } from "../utils/auth"
+import RolesManager from "../components/RolesManager"
 
 // ─── Status badge ───────────────────────────────────────────────────────────
 
@@ -256,6 +257,11 @@ export default function TeamPage() {
   const [loading, setLoading] = useState(true)
   const [accessDenied, setAccessDenied] = useState(false)
   const [canManage, setCanManage] = useState(false)
+  // Phase C — role.manage_custom is a SEPARATE permission from team.manage
+  // (only Owner has it by default; Manager has team.manage but not this).
+  // Probed independently, since canManage=true doesn't imply this.
+  const [canManageRoles, setCanManageRoles] = useState(false)
+  const [showRolesManager, setShowRolesManager] = useState(false)
   const [members, setMembers] = useState([])
   const [roles, setRoles] = useState([])
   const [showRemoved, setShowRemoved] = useState(false)
@@ -289,6 +295,15 @@ export default function TeamPage() {
         setCanManage(true)
       } catch {
         setCanManage(false)
+      }
+
+      // role.manage_custom probe — separate from team.manage above.
+      // Cheap: just try the permission catalog, 200 vs 403.
+      try {
+        await teamAPI.getPermissionCatalog()
+        setCanManageRoles(true)
+      } catch {
+        setCanManageRoles(false)
       }
     } catch (err) {
       if (err?.response?.status === 403) {
@@ -418,6 +433,12 @@ export default function TeamPage() {
           className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition">
           Activity Log →
         </a>
+        {canManageRoles && (
+          <button onClick={() => setShowRolesManager(true)}
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition">
+            Manage Roles
+          </button>
+        )}
         {canManage && (
           <button onClick={() => setInviteModal(true)}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition">
@@ -521,6 +542,10 @@ export default function TeamPage() {
         loading={busyId === removeTarget?.id} />
       <MakePrimaryConfirm member={makePrimaryTarget} onConfirm={handleMakePrimary} onCancel={() => setMakePrimaryTarget(null)}
         loading={busyId === makePrimaryTarget?.id} />
+      {showRolesManager && (
+        <RolesManager roles={roles} onClose={() => setShowRolesManager(false)}
+          onRolesChanged={() => fetchAll()} />
+      )}
       <Toast message={toast} />
     </Layout>
   )

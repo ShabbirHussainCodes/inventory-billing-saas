@@ -420,12 +420,18 @@ def role_list(request):
     if not has_permission(request, 'team.manage'):
         return Response({'error': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
-    roles = Role.objects.filter(Q(tenant__isnull=True) | Q(tenant=tenant)).order_by('name')
+    roles = Role.objects.filter(Q(tenant__isnull=True) | Q(tenant=tenant)).order_by('name').prefetch_related(
+        'role_permissions__permission'
+    )
     return Response([{
         'id': str(r.id),
         'name': r.name,
         'description': r.description,
         'is_system_role': r.is_system_role,
+        # Phase C — lets the frontend prefill the permission editor when
+        # opening an existing custom role for editing, and display a
+        # role's granted permissions without a second round trip.
+        'permission_codenames': [rp.permission.codename for rp in r.role_permissions.all()],
     } for r in roles])
 
 

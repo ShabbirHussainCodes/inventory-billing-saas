@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views
+from . import views, roles
 
 urlpatterns = [
     path('invite/', views.invite_member, name='team-invite'),
@@ -7,6 +7,12 @@ urlpatterns = [
     path('invite/<str:token>/accept/', views.accept_invite, name='team-invite-accept'),
 
     path('roles/', views.role_list, name='team-role-list'),
+
+    # ── Phase C — Custom Roles + Permission Editor ──
+    path('permissions/', roles.permission_catalog, name='team-permission-catalog'),
+    path('roles/create/', roles.create_custom_role, name='team-role-create'),
+    path('roles/<uuid:role_id>/', roles.update_custom_role, name='team-role-update'),
+    path('roles/<uuid:role_id>/delete/', roles.delete_custom_role, name='team-role-delete'),
 
     path('activity/', views.activity_log_list, name='team-activity-list'),
 
