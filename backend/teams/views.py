@@ -52,6 +52,55 @@ def _founder_ownership_fields(request):
     return (reason, notes)
 
 
+def _require_primary_owner(request, tenant):
+    """
+    Phase B.6 Stage D — Owner-vs-Owner guard.
+
+    Problem this solves: before Stage D, ANY active Owner could suspend,
+    remove, or demote ANY OTHER Owner — including a co-Owner with equal
+    standing. That's the "equal-power multi-owner" risk the whole Primary
+    Owner concept (Stage 1) was introduced to fix: two Owners with a
+    dispute could lock each other out in a race, whoever clicks first
+    wins. This closes that gap — going forward, only the Primary Owner
+    may take these specific actions on another Owner. A non-primary
+    Owner keeps every other day-to-day power (invoices, inventory,
+    customers, inviting/promoting staff — even promoting someone new
+    TO Owner) — this guard is narrowly scoped to actions that reduce or
+    remove an EXISTING Owner's standing: suspend, reactivate (its
+    inverse — see note below), remove, and demote-away-from-Owner.
+
+    Why reactivate is included even though it "restores" power rather
+    than removing it: if any Owner could reactivate, a non-primary
+    Owner could simply undo whatever the Primary Owner just suspended,
+    which defeats the guard entirely. So reactivate mirrors suspend.
+
+    Why promotion-to-Owner is deliberately NOT gated here: inviting a
+    new Owner or promoting existing staff to Owner doesn't touch any
+    EXISTING Owner's standing — it only adds a peer. That stays open to
+    any Owner with team.manage, same as before Stage D.
+
+    This function is ONLY ever called for a real business-user Owner
+    actor — Founder never reaches this branch (Founder's own Owner-
+    touching path is Stage C's reason+notes flow, a completely separate
+    accountability mechanism; Founder is the platform authority, not a
+    participant in this business's internal Owner hierarchy).
+
+    Returns None if the actor IS the current Primary Owner (proceed),
+    or a Response (403) if not. Always a fresh DB query — same "Turant
+    Effect Guarantee" as the rest of this app: if Primary Owner status
+    changed a second ago, this reflects it right now, no caching.
+    """
+    is_primary = Membership.objects.filter(
+        user=request.user, tenant=tenant, status='active', is_primary_owner=True
+    ).exists()
+    if not is_primary:
+        return Response(
+            {'error': 'Only the Primary Owner can perform this action on another Owner.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    return None
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def invite_member(request):
@@ -458,6 +507,10 @@ def suspend_member(request, membership_id):
             if isinstance(result, Response):
                 return result
             suspend_reason, suspend_notes = result
+        else:
+            guard = _require_primary_owner(request, tenant)
+            if guard:
+                return guard
         if _active_owner_count(tenant, exclude_pk=target.pk) == 0:
             return Response({'error': 'Cannot suspend the last active Owner of this business.'}, status=400)
 
@@ -494,11 +547,16 @@ def reactivate_member(request, membership_id):
     if target.status != 'suspended':
         return Response({'error': f'Cannot reactivate a member with status "{target.status}".'}, status=400)
     reactivate_reason = reactivate_notes = ''
-    if target.role.name == 'Owner' and request.user.role == 'super_admin':
-        result = _founder_ownership_fields(request)
-        if isinstance(result, Response):
-            return result
-        reactivate_reason, reactivate_notes = result
+    if target.role.name == 'Owner':
+        if request.user.role == 'super_admin':
+            result = _founder_ownership_fields(request)
+            if isinstance(result, Response):
+                return result
+            reactivate_reason, reactivate_notes = result
+        else:
+            guard = _require_primary_owner(request, tenant)
+            if guard:
+                return guard
 
     target.status = 'active'
     target.save()
@@ -544,6 +602,10 @@ def remove_member(request, membership_id):
             if isinstance(result, Response):
                 return result
             remove_reason, remove_notes = result
+        else:
+            guard = _require_primary_owner(request, tenant)
+            if guard:
+                return guard
         if target.status == 'active' and _active_owner_count(tenant, exclude_pk=target.pk) == 0:
             return Response({'error': 'Cannot remove the last active Owner of this business.'}, status=400)
 
@@ -594,10 +656,20 @@ def change_member_role(request, membership_id):
     role_reason = role_notes = ''
     if target.role.name == 'Owner' or new_role.name == 'Owner':
         if request.user.role == 'super_admin':
+            # Stage C — Founder needs reason+notes for touching Owner on
+            # EITHER side of the change (demotion or promotion).
             result = _founder_ownership_fields(request)
             if isinstance(result, Response):
                 return result
             role_reason, role_notes = result
+        elif target.role.name == 'Owner':
+            # Stage D — only demoting an EXISTING Owner is guarded by
+            # primary-owner-only. Promoting someone new TO Owner (target
+            # wasn't Owner before) stays open to any Owner with
+            # team.manage — it doesn't reduce anyone's existing standing.
+            guard = _require_primary_owner(request, tenant)
+            if guard:
+                return guard
 
     if (target.role.name == 'Owner' and new_role.name != 'Owner'
             and target.status == 'active'
