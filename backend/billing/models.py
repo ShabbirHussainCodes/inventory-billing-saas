@@ -128,6 +128,16 @@ class Invoice(models.Model):
         choices=STATUS_CHOICES,
         default='draft'
     )
+
+    # --- Payment tracking (added for future ML — days-to-pay, payment-
+    # default-risk models need this timestamp, which wasn't captured
+    # before; status alone tells "paid" but not WHEN) ---
+    # Kept in sync with `status` wherever status changes to/from 'paid'
+    # (invoice_update_status view, InvoiceCreateSerializer, InvoiceEditSerializer)
+    # — cleared (set back to None) if status ever reverts away from 'paid',
+    # so this never lies about payment history.
+    paid_at = models.DateTimeField(null=True, blank=True)
+
     notes = models.TextField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -199,6 +209,21 @@ class InvoiceItem(models.Model):
         default=0
     )
     profit = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
+    )
+
+    # --- Discount tracking (added for future ML — fraud/discount-abuse
+    # detection needs this) ---
+    # Total ₹ discount applied to this line (before tax), computed
+    # frontend-side (LineItemsTable.jsx calcLine()) and passed through
+    # as-is. Purely informational — does NOT affect subtotal/tax_amount/
+    # total/profit below, since those already use the post-discount
+    # unit_price (discount is "baked in" to unit_price, as before).
+    # Before this field existed, the discount amount was computed and
+    # shown in the UI but never actually saved — this was silently lost.
+    discount_amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
         default=0

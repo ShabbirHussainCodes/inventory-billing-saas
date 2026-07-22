@@ -39,6 +39,7 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
             'unit_price',
             'cost_price',
             'tax_rate',
+            'discount_amount',
             'subtotal',
             'tax_amount',
             'total',
@@ -163,6 +164,14 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
             invoice.tax_amount = tax_amount
             invoice.total_amount = subtotal + tax_amount
             invoice.total_profit = total_profit
+
+            # Agar invoice seedha 'paid' status ke saath ban rahi hai
+            # (buildPayload() status directly set kar sakta hai — koi
+            # separate PATCH zaroori nahi), paid_at yahin capture karo.
+            if invoice.status == 'paid':
+                from django.utils import timezone
+                invoice.paid_at = timezone.now()
+
             invoice.save()
 
         return invoice
@@ -215,6 +224,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
             'currency',
             'tax_label',
             'status',
+            'paid_at',
             'notes',
             'items',
             'created_at'
@@ -228,6 +238,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
             'total_profit',
             'currency',
             'tax_label',
+            'paid_at',
             'created_at'
         ]
 
@@ -297,6 +308,12 @@ class InvoiceEditSerializer(serializers.ModelSerializer):
         user = self.context['user']
         items_data = validated_data.pop('items')
 
+        # Edit sirf draft invoices pe allowed hai (validate() mein check
+        # hota hai), par draft se seedha 'paid' bhi ban sakti hai isi save
+        # mein (alag PATCH zaroori nahi) — is liye old status yahan capture
+        # karo taaki paid_at sahi se set/clear ho.
+        old_status = instance.status
+
         with transaction.atomic():
             # Step 1 — Purane items ka stock wapas add karo (F() = DB-level,
             # stale Python object issue se bachata hai), phir items delete karo
@@ -365,6 +382,13 @@ class InvoiceEditSerializer(serializers.ModelSerializer):
             instance.tax_amount = tax_amount
             instance.total_amount = subtotal + tax_amount
             instance.total_profit = total_profit
+
+            if instance.status == 'paid' and old_status != 'paid':
+                from django.utils import timezone
+                instance.paid_at = timezone.now()
+            elif instance.status != 'paid':
+                instance.paid_at = None
+
             instance.save()
 
         return instance

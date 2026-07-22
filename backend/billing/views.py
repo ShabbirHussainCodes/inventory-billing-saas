@@ -336,7 +336,17 @@ def invoice_update_status(request, pk):
 
     old_status = invoice.status
     invoice.status = new_status
-    invoice.save(update_fields=['status'])
+
+    # paid_at sync — jab bhi status 'paid' me jaaye (first time), timestamp
+    # capture karo; agar 'paid' se hatke kahin aur jaaye (jaise "Revert to
+    # Sent"), clear kar do taaki data kabhi galat na bole.
+    if new_status == 'paid' and old_status != 'paid':
+        from django.utils import timezone
+        invoice.paid_at = timezone.now()
+    elif new_status != 'paid':
+        invoice.paid_at = None
+
+    invoice.save(update_fields=['status', 'paid_at'])
     from superadmin.audit import log_action
     log_action(request, 'invoice_status_changed', tenant=tenant,
                target_type='invoice', target_name=invoice.invoice_number,

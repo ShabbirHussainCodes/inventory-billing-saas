@@ -221,6 +221,11 @@ export default function InvoiceDetailPage() {
                   Due Date: <span className="text-gray-800 font-medium">{formatDate(invoice.due_date)}</span>
                 </p>
               )}
+              {invoice.paid_at && (
+                <p className="text-xs text-gray-500">
+                  Paid On: <span className="text-gray-800 font-medium">{formatDate(invoice.paid_at)}</span>
+                </p>
+              )}
             </div>
           </div>
         </div>

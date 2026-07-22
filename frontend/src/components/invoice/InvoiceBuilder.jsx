@@ -300,7 +300,10 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
     return null
   }
 
-  // Build payload — discount baked into effective unit_price
+  // Build payload — discount baked into effective unit_price, but the
+  // discount amount itself is ALSO sent separately now (discount_amount)
+  // so it's not silently lost — future analytics/fraud-detection needs
+  // to know how much discount was actually given, not just the net price.
   const buildPayload = (status = 'draft') => ({
     customer: customer.id,
     invoice_date: invoiceDate,
@@ -310,13 +313,14 @@ export default function InvoiceBuilder({ mode='create', initialData=null, onSucc
     items: items
       .filter(i => i.product)
       .map(item => {
-        const { effectiveUnitPrice } = calcLine(item)
+        const { effectiveUnitPrice, discountAmount } = calcLine(item)
         return {
           product: item.product.id,
           quantity: item.quantity,
           unit_price: effectiveUnitPrice.toFixed(2),
           cost_price: item.costPrice.toFixed(2),
           tax_rate: item.taxRate.toFixed(2),
+          discount_amount: discountAmount.toFixed(2),
         }
       })
   })
